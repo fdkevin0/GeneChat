@@ -13,7 +13,7 @@ from collections import defaultdict, deque
 import torch
 import torch.distributed as dist
 
-from proteinchat.common import dist_utils
+from genechat.common import dist_utils
 
 
 class SmoothedValue(object):

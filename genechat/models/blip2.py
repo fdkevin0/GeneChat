@@ -15,11 +15,11 @@ import torch.nn as nn
 import torch.distributed as dist
 import torch.nn.functional as F
 
-import proteinchat.common.dist_utils as dist_utils
-from proteinchat.common.dist_utils import download_cached_file
-from proteinchat.common.utils import is_url
-from proteinchat.common.logger import MetricLogger
-from proteinchat.models.base_model import BaseModel
+import genechat.common.dist_utils as dist_utils
+from genechat.common.dist_utils import download_cached_file
+from genechat.common.utils import is_url
+from genechat.common.logger import MetricLogger
+from genechat.models.base_model import BaseModel
 from transformers import BertTokenizer
 
 

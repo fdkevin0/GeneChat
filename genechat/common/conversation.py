@@ -9,7 +9,7 @@ import dataclasses
 from enum import auto, Enum
 from typing import List, Tuple, Any
 from einops import rearrange, reduce, repeat
-from proteinchat.common.registry import registry
+from genechat.common.registry import registry
 import numpy as np
 
 
@@ -107,7 +107,7 @@ class StoppingCriteriaSub(StoppingCriteria):
 
 
 CONV_VISION = Conversation(
-    system="Give the following protein: <protein>proteinContent</protein>. "
+    system="Give the following gene: <gene>geneContent</gene>. "
            "Please answer my questions.",
     roles=("Human", "Assistant"),
     messages=[],
@@ -119,6 +119,15 @@ CONV_VISION = Conversation(
 
 
 class Chat:
+    '''
+    Chat
+    Functionality:
+        1. ask
+        2. answer
+        3. get_ppl
+        4. upload_gene
+        5. get_context_emb
+    '''
     def __init__(self, model, device='cuda:0'):
         self.device = device
         self.model = model
@@ -129,7 +138,7 @@ class Chat:
 
     def ask(self, text, conv):
         if len(conv.messages) > 0 and conv.messages[-1][0] == conv.roles[0] \
-                and conv.messages[-1][1][-6:] == '</protein>':  # last message is image.
+                and conv.messages[-1][1][-6:] == '</gene>':  # last message is image.
             conv.messages[-1][1] = ' '.join([conv.messages[-1][1], text])
         else:
             conv.append_message(conv.roles[0], text)
@@ -143,7 +152,7 @@ class Chat:
 
         if save_embeds:
             # print(embs.squeeze().detach().cpu().numpy().shape)
-            np.save('/nfs_baoding_ai/mingjia_2023/proteinchat_glm/tsne/prompt.npy', embs.squeeze().detach().cpu().numpy())
+            np.save('/nfs_baoding_ai/mingjia_2023/genechat_glm/tsne/prompt.npy', embs.squeeze().detach().cpu().numpy())
 
         current_max_len = embs.shape[1] + max_new_tokens
         if current_max_len - max_length > 0:
@@ -233,22 +242,22 @@ class Chat:
         return conf_list
 
 
-    def upload_protein(self, seq, conv, protein_list):
-        protein_emb, _ = self.model.encode_protein([seq])
-        #protein_emb = rearrange(protein_emb, 't b c -> b t c')
-        protein_list.append(protein_emb)
-        conv.append_message(conv.roles[0], "<protein><proteinHere></protein>")
+    def upload_gene(self, seq, conv, gene_list):
+        gene_embeds, _ = self.model.encode_gene([seq])
+        #gene_embeds = rearrange(gene_embeds, 't b c -> b t c')
+        gene_list.append(gene_embeds)
+        conv.append_message(conv.roles[0], "<gene><geneHere></gene>")
         msg = "Received."
         # self.conv.append_message(self.conv.roles[1], msg)
-        return protein_emb, msg
+        return gene_embeds, msg
 
     def get_context_emb(self, conv, img_list):
         prompt = conv.get_prompt()
         # print("===prompt:", prompt)
-        prompt_segs = prompt.split('<proteinHere>')
+        prompt_segs = prompt.split('<geneHere>')
         # print("prompt_segs", prompt_segs)
         # print("=====")
-        assert len(prompt_segs) == len(img_list) + 1, "Unmatched numbers of protein placeholders and proteins."
+        assert len(prompt_segs) == len(img_list) + 1, "Unmatched numbers of gene placeholders and genes."
         seg_tokens = [
             self.model.llama_tokenizer(
                 seg, return_tensors="pt", add_special_tokens=i == 0).to(self.device).input_ids

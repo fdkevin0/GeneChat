@@ -10,11 +10,11 @@ import sys
 
 from omegaconf import OmegaConf
 
-from proteinchat.common.registry import registry
+from genechat.common.registry import registry
 
-from proteinchat.datasets.builders import *
-from proteinchat.models import *
-from proteinchat.tasks import *
+from genechat.datasets.builders import *
+from genechat.models import *
+from genechat.tasks import *
 
 
 root_dir = os.path.dirname(os.path.abspath(__file__))

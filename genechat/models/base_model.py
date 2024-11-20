@@ -11,8 +11,8 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
-from proteinchat.common.dist_utils import download_cached_file, is_dist_avail_and_initialized
-from proteinchat.common.utils import get_abs_path, is_url
+from genechat.common.dist_utils import download_cached_file, is_dist_avail_and_initialized
+from genechat.common.utils import get_abs_path, is_url
 from omegaconf import OmegaConf
 
 

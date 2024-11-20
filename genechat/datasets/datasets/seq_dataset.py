@@ -7,27 +7,23 @@ from torch.nn.utils.rnn import pad_sequence
 import torch
 import random
 
-questions = ["Tell me about this protein.", 
-                "What is the functionality of this protein?", 
-                "Briefly summarize the functionality of this protein.",
-                "Please provide a detailed description of the protein."]
+questions = ["Tell me about this gene.", 
+                "What is the functionality of this gene?", 
+                "Briefly summarize the functionality of this gene.",
+                "Please provide a detailed description of the gene."]
 q_map = {
-    "Can this protein bind to RNA?":
-    " Reply only with Yes or No.",
-    "Can this protein bind to DNA?":
-    " Reply only with Yes or No.",
-    "What type of enzyme is this?":
-    " Choose one from Transferase, Hydrolase, Oxidoreductase, Ligase, Lyase, Isomerase, and Translocase.",
-    "What type of protein is this?":
-    " Choose one from Ribonucleoprotein and Chaperone protein",
-    "What electron acceptor or cofactor does this enzyme use?":
-    " Choose one from NAD and NADP.",
-    "What ligand can this protein bind to?":
-    " Choose one from Nucleotide, Magnesium, Zinc, Iron, S-adenosyl-L-methionine, and Manganese.",
-    "Which cellular or extracellular component can this protein be found in?":
-    " Choose one from Cytoplasm, Membrane, Nucleus, Secreted, Mitochondrion, and Plastid",
-    "What biological process does this protein involved in?":
-    " Choose one from Molecule Transport, Transcription from DNA to mRNA, Amino-acid biosynthesis, Protein biosynthesis from mRNA molecules, Lipid metabolism, tRNA processing, DNA damage, and Cell cycle."
+    "Which organism does the gene belong to?":
+    " Limit your answer to one or two words.",
+    "What is the locus type of the gene?":
+    " Limit your answer to one or two words.",
+    "On which chromosome is the gene located?":
+    " Limit your answer to one or two words.",
+    "How many exons does the gene contain?":
+    " Limit your answer to one or two words.",
+    "What is the official symbol of the gene?":
+    " Limit your answer to one or two words.",
+    "What is the official full name of the gene?":
+    " Limit your answer to one or two words."
 }
 class SeqDataset(BaseDataset):
     def __init__(self, kw_path, text_rule_path, text_manual_path, seq_path):
@@ -60,26 +56,27 @@ class SeqDataset(BaseDataset):
     def __getitem__(self, index):
         
         if index < self.split1: # sample kw 
-            uniprot_id = self.kw[index]["uniprot_id"]
+            uniprot_id = self.kw[index]["Gene Id"]
             answer = self.kw[index]["A"]
             query = self.kw[index]['Q']
             query += q_map[query]
-            prompt = f"###Human: <protein><proteinHere></protein> {query} ###Assistant:"
+            prompt = f"###Human: <gene><geneHere></gene> {query} ###Assistant:"
         elif index < self.split2: # sample rule based functionality
             true_index  = (index - self.split1) % self.len_rule
-            uniprot_id = self.rule[true_index]["uniprot_id"]
-            answer = self.rule[true_index]["caption"]
-            prompt = f"###Human: <protein><proteinHere></protein> {random.choice(questions)} ###Assistant:"
+            uniprot_id = self.rule[true_index]["Gene Id"]
+            answer = self.rule[true_index]["Summary"]
+            prompt = f"###Human: <gene><geneHere></gene> {random.choice(questions)} ###Assistant:"
         else: # sample manual annotated functionality
             true_index  = (index - self.split2) % self.len_manual
-            uniprot_id = self.manual[true_index]["uniprot_id"]
-            answer = self.manual[true_index]["caption"]
-            prompt = f"###Human: <protein><proteinHere></protein> {random.choice(questions)} ###Assistant:"
+            uniprot_id = self.manual[true_index]["Gene Id"]
+            answer = self.manual[true_index]["Summary"]
         
         seq = self.sequence[uniprot_id]
 
+        '''
         if len(seq) > 600:
             seq = seq[:600]
+        '''
 
         return {
             "seq": seq,
@@ -99,5 +96,3 @@ class SeqDataset(BaseDataset):
         #     "seq": seq,
         #     "text_input": answer
         # }
-
-

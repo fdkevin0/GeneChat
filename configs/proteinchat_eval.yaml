@@ -1,13 +1,18 @@
 model:
-  arch: proteinchat
+  arch: genechat
   model_type: pretrain_vicuna
-  freeze_protein_encoder: True
+
+  freeze_gene_encoder: True
   freeze_qformer: True
   freeze_llama: True
-  freeze_lp: True
+  freeze_adaptor: True
 
   llama_model: "/data1/mingjia/vicuna-13b-v1.5"
-  
+  gene_model: "hyenadna-medium-160k-seqlen"
+
+  max_gene_length: 160000
+  gene_pool_width: 400
+
   # generation configs
   prompt: ""
 

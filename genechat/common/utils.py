@@ -23,7 +23,7 @@ import pandas as pd
 import yaml
 from iopath.common.download import download
 from iopath.common.file_io import file_lock, g_pathmgr
-from proteinchat.common.registry import registry
+from genechat.common.registry import registry
 from torch.utils.model_zoo import tqdm
 from torchvision.datasets.utils import (
     check_integrity,

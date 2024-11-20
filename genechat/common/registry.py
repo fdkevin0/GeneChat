@@ -27,12 +27,12 @@ class Registry:
 
         Usage:
 
-            from proteinchat.common.registry import registry
-            from proteinchat.datasets.base_dataset_builder import BaseDatasetBuilder
+            from genechat.common.registry import registry
+            from genechat.datasets.base_dataset_builder import BaseDatasetBuilder
         """
 
         def wrap(builder_cls):
-            from proteinchat.datasets.builders.base_dataset_builder import BaseDatasetBuilder
+            from genechat.datasets.builders.base_dataset_builder import BaseDatasetBuilder
 
             assert issubclass(
                 builder_cls, BaseDatasetBuilder
@@ -59,11 +59,11 @@ class Registry:
 
         Usage:
 
-            from proteinchat.common.registry import registry
+            from genechat.common.registry import registry
         """
 
         def wrap(task_cls):
-            from proteinchat.tasks.base_task import BaseTask
+            from genechat.tasks.base_task import BaseTask
 
             assert issubclass(
                 task_cls, BaseTask
@@ -88,11 +88,11 @@ class Registry:
 
         Usage:
 
-            from proteinchat.common.registry import registry
+            from genechat.common.registry import registry
         """
 
         def wrap(model_cls):
-            from proteinchat.models import BaseModel
+            from genechat.models import BaseModel
 
             assert issubclass(
                 model_cls, BaseModel
@@ -117,11 +117,11 @@ class Registry:
 
         Usage:
 
-            from proteinchat.common.registry import registry
+            from genechat.common.registry import registry
         """
 
         def wrap(processor_cls):
-            from proteinchat.processors import BaseProcessor
+            from genechat.processors import BaseProcessor
 
             assert issubclass(
                 processor_cls, BaseProcessor
@@ -146,7 +146,7 @@ class Registry:
 
         Usage:
 
-            from proteinchat.common.registry import registry
+            from genechat.common.registry import registry
         """
 
         def wrap(lr_sched_cls):
@@ -170,7 +170,7 @@ class Registry:
 
         Usage:
 
-            from proteinchat.common.registry import registry
+            from genechat.common.registry import registry
         """
 
         def wrap(runner_cls):
@@ -194,7 +194,7 @@ class Registry:
 
         Usage:
 
-            from proteinchat.common.registry import registry
+            from genechat.common.registry import registry
         """
         assert isinstance(path, str), "All path must be str."
         if name in cls.mapping["paths"]:
@@ -210,7 +210,7 @@ class Registry:
 
         Usage::
 
-            from proteinchat.common.registry import registry
+            from genechat.common.registry import registry
 
             registry.register("config", {})
         """

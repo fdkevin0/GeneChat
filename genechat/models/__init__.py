@@ -9,17 +9,17 @@ import logging
 import torch
 from omegaconf import OmegaConf
 
-from proteinchat.common.registry import registry
-from proteinchat.models.base_model import BaseModel
-from proteinchat.models.blip2 import Blip2Base
-from proteinchat.models.proteinchat import ProteinChat
+from genechat.common.registry import registry
+from genechat.models.base_model import BaseModel
+from genechat.models.blip2 import Blip2Base
+from genechat.models.genechat import GeneChat
 
 
 __all__ = [
     "load_model",
     "BaseModel",
     "Blip2Base",
-    "ProteinChat"
+    "GeneChat"
 ]
 
 
@@ -28,7 +28,7 @@ def load_model(name, model_type, is_eval=False, device="cpu", checkpoint=None):
     Load supported models.
 
     To list all available models and types in registry:
-    >>> from proteinchat.models import model_zoo
+    >>> from genechat.models import model_zoo
     >>> print(model_zoo)
 
     Args:
@@ -114,7 +114,7 @@ def load_model_and_preprocess(name, model_type, is_eval=False, device="cpu"):
     Load model and its related preprocessors.
 
     List all available models and types in registry:
-    >>> from proteinchat.models import model_zoo
+    >>> from genechat.models import model_zoo
     >>> print(model_zoo)
 
     Args:
@@ -161,7 +161,7 @@ class ModelZoo:
     """
     A utility class to create string representation of available model architectures and types.
 
-    >>> from proteinchat.models import model_zoo
+    >>> from genechat.models import model_zoo
     >>> # list all available models
     >>> print(model_zoo)
     >>> # show total number of models

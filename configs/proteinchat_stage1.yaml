@@ -1,21 +1,26 @@
 model:
-  arch: proteinchat
+  arch: genechat
   model_type: pretrain_vicuna
 
   # Stage 1
-  freeze_protein_encoder: False
-  freeze_lp: False
+  freeze_gene_encoder: False
+  freeze_adaptor: False
   freeze_llama: True
+
+  max_gene_length: 160000
+  gene_pool_width: 400
+  
+  gene_model: "hyenadna-medium-160k-seqlen"
 
   # Stage 2
   # freeze_protein_encoder: True
   # freeze_lp: True
   # freeze_llama: False
 
-  llama_model: "/data1/mingjia/vicuna-13b-v1.5"
+  llama_model: "/home/akash/gene_chat/llama_pretrained/vicuna-7b-v1.5"
   prompt: ""
 
-  max_txt_len: 405
+  max_txt_len: 5112
   end_sym: "###"
   low_resource: False
   embedding_agg: 1
@@ -24,10 +29,10 @@ model:
 
 datasets:
   seq:
-    data_type: protein
+    data_type: gene
     build_info:
       train:
-        storage: data/train_set
+        storage: /data2/gene_chat/exon_count/data/train_set
 
 run:
   task: protein_text_pretrain

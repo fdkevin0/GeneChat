@@ -16,17 +16,17 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import webdataset as wds
-from proteinchat.common.dist_utils import (
+from genechat.common.dist_utils import (
     download_cached_file,
     get_rank,
     get_world_size,
     is_main_process,
     main_process,
 )
-from proteinchat.common.registry import registry
-from proteinchat.common.utils import is_url
-from proteinchat.datasets.data_utils import concat_datasets, reorg_datasets_by_split, ChainDataset
-from proteinchat.datasets.datasets.dataloader_utils import (
+from genechat.common.registry import registry
+from genechat.common.utils import is_url
+from genechat.datasets.data_utils import concat_datasets, reorg_datasets_by_split, ChainDataset
+from genechat.datasets.datasets.dataloader_utils import (
     IterLoader,
     MultiIterLoader,
     PrefetchLoader,
@@ -44,7 +44,7 @@ class RunnerBase:
     will support other distributed frameworks.
     """
 
-    def __init__(self, cfg, task, model, datasets, job_id):
+    def __init__(self, cfg, task, model, datasets, wandb, job_id):
         self.config = cfg
         self.job_id = job_id
 
@@ -61,6 +61,8 @@ class RunnerBase:
         self._lr_sched = None
 
         self.start_epoch = 0
+        
+        self.wandb = wandb
 
         # self.setup_seeds()
         self.setup_output_dir()
@@ -409,7 +411,7 @@ class RunnerBase:
             # training phase
             if not self.evaluate_only:
                 logging.info("Start training")
-                train_stats = self.train_epoch(cur_epoch)
+                train_stats = self.train_epoch(cur_epoch, wandb=self.wandb)
                 self.log_stats(split_name="train", stats=train_stats)
 
             # evaluation phase
@@ -467,7 +469,7 @@ class RunnerBase:
 
             return test_logs
 
-    def train_epoch(self, epoch):
+    def train_epoch(self, epoch, wandb=None):
         # train
         self.model.train()
 
@@ -481,6 +483,7 @@ class RunnerBase:
             cuda_enabled=self.cuda_enabled,
             log_freq=self.log_freq,
             accum_grad_iters=self.accum_grad_iters,
+            wandb=wandb
         )
 
     @torch.no_grad()
@@ -509,7 +512,7 @@ class RunnerBase:
             model=model,
             dataset=self.datasets[split_name],
         )
-        results = self.task.evaluation(model, data_loader)
+        results = self.task.evaluation(model, data_loader, wandb=self.wandb)
 
         if results is not None:
             return self.task.after_evaluation(

@@ -10,11 +10,11 @@ import os
 import time
 import torch
 import torch.distributed as dist
-from proteinchat.common.dist_utils import get_rank, get_world_size, is_main_process, is_dist_avail_and_initialized
-from proteinchat.common.logger import MetricLogger, SmoothedValue
-from proteinchat.common.registry import registry
-from proteinchat.datasets.data_utils import prepare_sample
-
+from genechat.common.dist_utils import get_rank, get_world_size, is_main_process, is_dist_avail_and_initialized
+from genechat.common.logger import MetricLogger, SmoothedValue
+from genechat.common.registry import registry
+from genechat.datasets.data_utils import prepare_sample
+import wandb
 
 class BaseTask:
     def __init__(self, **kwargs):
@@ -86,7 +86,7 @@ class BaseTask:
     def inference_step(self):
         raise NotImplementedError
 
-    def evaluation(self, model, data_loader, cuda_enabled=True):
+    def evaluation(self, model, data_loader, cuda_enabled=True, wandb=None):
         metric_logger = MetricLogger(delimiter="  ")
         metric_logger.add_meter("loss", SmoothedValue(window_size=1, fmt="{value:.4f}"))
         header = "Evaluation"
@@ -113,6 +113,8 @@ class BaseTask:
             metric_logger.update(loss=loss.item())
             results.append(loss.item())
 
+            wandb.log({'loss': loss.item()})
+
         if is_dist_avail_and_initialized():
             dist.barrier()
 
@@ -137,6 +139,7 @@ class BaseTask:
         cuda_enabled=False,
         log_freq=50,
         accum_grad_iters=1,
+        wandb=None
     ):
         return self._train_inner_loop(
             epoch=epoch,
@@ -149,6 +152,7 @@ class BaseTask:
             log_freq=log_freq,
             cuda_enabled=cuda_enabled,
             accum_grad_iters=accum_grad_iters,
+            wandb=wandb
         )
 
     def train_iters(
@@ -164,6 +168,7 @@ class BaseTask:
         cuda_enabled=False,
         log_freq=50,
         accum_grad_iters=1,
+        wandb=None
     ):
         return self._train_inner_loop(
             epoch=epoch,
@@ -177,6 +182,7 @@ class BaseTask:
             log_freq=log_freq,
             cuda_enabled=cuda_enabled,
             accum_grad_iters=accum_grad_iters,
+            wandb=wandb
         )
 
     def _train_inner_loop(
@@ -192,6 +198,7 @@ class BaseTask:
         log_freq=50,
         cuda_enabled=False,
         accum_grad_iters=1,
+        wandb=None
     ):
         """
         An inner training loop compatible with both epoch-based and iter-based training.
@@ -290,6 +297,9 @@ class BaseTask:
             # print(f"[base_task] _train_inner_loop end_optimizer: {end_optimizer - end_train_step}")
             metric_logger.update(loss=loss.item())
             metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+
+            wandb.log({'loss': loss.item()})
+
             # print(f"[base_task] _train_inner_loop ITERATION end -----------------------------{time.time()-iter_start}")
 
         # after train_epoch()

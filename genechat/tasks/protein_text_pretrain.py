@@ -5,8 +5,8 @@
  For full license text, see the LICENSE_Lavis file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 """
 
-from proteinchat.common.registry import registry
-from proteinchat.tasks.base_task import BaseTask
+from genechat.common.registry import registry
+from genechat.tasks.base_task import BaseTask
 
 
 @registry.register_task("protein_text_pretrain")

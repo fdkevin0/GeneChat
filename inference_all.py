@@ -10,26 +10,26 @@ import torch.backends.cudnn as cudnn
 import gradio as gr
 from collections import Counter
 
-from proteinchat.common.config import Config
-from proteinchat.common.registry import registry
-from proteinchat.common.dist_utils import get_rank, init_distributed_mode
-from proteinchat.common.conversation import Chat, CONV_VISION
+from genechat.common.config import Config
+from genechat.common.registry import registry
+from genechat.common.dist_utils import get_rank, init_distributed_mode
+from genechat.common.conversation import Chat, CONV_VISION
 
 from eval import get_simcse, get_simcse_llm_param
 import json
 
 # imports modules for registration
-from proteinchat.datasets.builders import *
-from proteinchat.models import *
-from proteinchat.runners import *
-from proteinchat.tasks import *
+from genechat.datasets.builders import *
+from genechat.models import *
+from genechat.runners import *
+from genechat.tasks import *
 
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Demo")
     parser.add_argument("--cfg-path", help="path to configuration file.",
-                        default='configs/proteinchat_eval.yaml')
+                        default='configs/genechat_eval.yaml')
     parser.add_argument("--gpu-id", type=int, default=0, help="specify the gpu to load the model.")
     parser.add_argument(
         "--options",
@@ -81,11 +81,11 @@ def gradio_reset(chat_state, img_list):
         img_list = []
     return chat_state, img_list
 
-def upload_protein(seq):
+def upload_gene(seq):
     chat_state = CONV_VISION.copy()
     img_list = []
-    protein_emb, llm_message = chat.upload_protein(seq, chat_state, img_list)
-    return chat_state, img_list, protein_emb
+    gene_embed, llm_message = chat.upload_gene(seq, chat_state, img_list)
+    return chat_state, img_list, gene_embed
 
 def gradio_ask(user_message, chat_state):
     chat.ask(user_message, chat_state)
@@ -136,7 +136,7 @@ def eval_ppl():
             seq = seq[:600]
 
         user_message = query
-        chat_state, img_list, protein_embs = upload_protein(seq)
+        chat_state, img_list, gene_embeds = upload_gene(seq)
         chat_state = gradio_ask(user_message, chat_state)
 
         loss = gradio_ppl(chat_state, img_list, predict_list)
@@ -166,7 +166,7 @@ def eval_antimicro():
                 seq = seq[:600]
 
             user_message = query
-            chat_state, img_list, protein_embs = upload_protein(seq)
+            chat_state, img_list, gene_embeds = upload_gene(seq)
             chat_state = gradio_ask(user_message, chat_state)
 
             llm_message, chat_state, img_list, loss = gradio_answer(chat_state, img_list, num_beams=4)
@@ -199,7 +199,7 @@ def eval_func_text(qa_list, seq):
             seq = seq[:600]
 
         user_message = query
-        chat_state, img_list, protein_embs = upload_protein(seq)
+        chat_state, img_list, gene_embeds = upload_gene(seq)
         chat_state = gradio_ask(user_message, chat_state)
 
         llm_message, chat_state, img_list, loss = gradio_answer(chat_state, img_list, num_beams=4)
@@ -238,7 +238,7 @@ def eval_multi_round():
             seq = seq[:600]
 
         user_message = query
-        chat_state, img_list, protein_embs = upload_protein(seq)
+        chat_state, img_list, gene_embeds = upload_gene(seq)
         chat_state = gradio_ask(user_message, chat_state)
 
         llm_message, chat_state, img_list, loss = gradio_answer(chat_state, img_list, num_beams=4)
@@ -299,7 +299,7 @@ def eval_LLM_params(qa_list, seq):
             temperature = 1e-3
 
             user_message = query
-            chat_state, img_list, protein_embs = upload_protein(seq)
+            chat_state, img_list, gene_embeds = upload_gene(seq)
             chat_state = gradio_ask(user_message, chat_state)
 
             llm_message, chat_state, img_list, loss = gradio_answer(chat_state, img_list, num_beams=num_beams, temperature=temperature)
@@ -368,7 +368,7 @@ def eval_kw(qa_list, seqs):
             seq = seq[:600]
 
         user_message = query
-        chat_state, img_list, protein_embs = upload_protein(seq)
+        chat_state, img_list, gene_embeds = upload_gene(seq)
         chat_state = gradio_ask(user_message, chat_state)
 
         llm_message, chat_state, img_list, loss = gradio_answer(chat_state, img_list)
@@ -392,9 +392,9 @@ def tsne_one_seq(function, seq):
 
     for query in query_list:
         user_message = query
-        chat_state, img_list, protein_embs = upload_protein(seq)
-        print(protein_embs.squeeze().detach().cpu().numpy().shape)
-        np.save('/nfs_beijing_ai/mingjia_2023/proteinchat_glm/tsne/protein.npy', protein_embs.squeeze().detach().cpu().numpy())
+        chat_state, img_list, gene_embeds = upload_gene(seq)
+        print(gene_embeds.squeeze().detach().cpu().numpy().shape)
+        np.save('/nfs_beijing_ai/mingjia_2023/proteinchat_glm/tsne/protein.npy', gene_embeds.squeeze().detach().cpu().numpy())
 
         chat_state = gradio_ask(user_message, chat_state)
 
@@ -420,10 +420,10 @@ def tsne_multi_seq(prots):
         if len(seq) > 600:
             seq = seq[:600]
 
-        chat_state, img_list, protein_embs = upload_protein(seq)
-        protein_embs = torch.mean(protein_embs, 1)
+        chat_state, img_list, gene_embeds = upload_gene(seq)
+        gene_embeds = torch.mean(gene_embeds, 1)
         
-        encoding_array.append(protein_embs.squeeze().detach().cpu().numpy())
+        encoding_array.append(gene_embeds.squeeze().detach().cpu().numpy())
     
     encoding_array = np.array(encoding_array)   
     print(encoding_array.shape)

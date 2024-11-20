@@ -13,11 +13,11 @@ import time
 import torch
 import torch.distributed as dist
 import webdataset as wds
-from proteinchat.common.dist_utils import download_cached_file, is_main_process, main_process
-from proteinchat.common.registry import registry
-from proteinchat.common.utils import is_url
-from proteinchat.datasets.data_utils import concat_datasets, reorg_datasets_by_split
-from proteinchat.runners.runner_base import RunnerBase
+from genechat.common.dist_utils import download_cached_file, is_main_process, main_process
+from genechat.common.registry import registry
+from genechat.common.utils import is_url
+from genechat.datasets.data_utils import concat_datasets, reorg_datasets_by_split
+from genechat.runners.runner_base import RunnerBase
 from torch.utils.data.dataset import ChainDataset
 
 
@@ -38,8 +38,8 @@ class RunnerIter(RunnerBase):
     We refer every #iters_per_inner_epoch steps as an inner epoch.
     """
 
-    def __init__(self, cfg, task, model, datasets, job_id):
-        super().__init__(cfg, task, model, datasets, job_id)
+    def __init__(self, cfg, task, model, datasets, wandb, job_id):
+        super().__init__(cfg, task, model, datasets, wandb, job_id)
 
         self.start_iters = 0
 
@@ -92,7 +92,7 @@ class RunnerIter(RunnerBase):
                     )
                 )
 
-                train_stats = self.train_iters(self.cur_epoch, start_iters)
+                train_stats = self.train_iters(self.cur_epoch, start_iters, wandb=self.wandb)
                 self.log_stats(split_name="train", stats=train_stats)
 
             # evaluation phase
@@ -134,7 +134,7 @@ class RunnerIter(RunnerBase):
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
         logging.info("Training time {}".format(total_time_str))
 
-    def train_iters(self, epoch, start_iters):
+    def train_iters(self, epoch, start_iters, wandb=None):
         # train by iterations
         self.model.train()
 
@@ -150,6 +150,7 @@ class RunnerIter(RunnerBase):
             cuda_enabled=self.cuda_enabled,
             log_freq=self.log_freq,
             accum_grad_iters=self.accum_grad_iters,
+            wandb=wandb
         )
 
     @main_process

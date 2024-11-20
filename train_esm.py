@@ -7,34 +7,36 @@
 import json
 import argparse
 import os
-os.environ['HF_HOME'] = '/data1/mingjia/cache/'
+os.environ['HF_HOME'] = '/home/akash'
 import random
+
+import wandb
 
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 
-import proteinchat.tasks as tasks
-from proteinchat.common.config import Config
-from proteinchat.common.dist_utils import get_rank, init_distributed_mode
-from proteinchat.common.logger import setup_logger
-from proteinchat.common.optims import (
+import genechat.tasks as tasks
+from genechat.common.config import Config
+from genechat.common.dist_utils import get_rank, init_distributed_mode
+from genechat.common.logger import setup_logger
+from genechat.common.optims import (
     LinearWarmupCosineLRScheduler,
     LinearWarmupStepLRScheduler,
 )
-from proteinchat.common.registry import registry
-from proteinchat.common.utils import now
+from genechat.common.registry import registry
+from genechat.common.utils import now
 
 # imports modules for registration
-from proteinchat.datasets.builders import *
-from proteinchat.models import *
-from proteinchat.runners import *
-from proteinchat.tasks import *
+from genechat.datasets.builders import *
+from genechat.models import *
+from genechat.runners import *
+from genechat.tasks import *
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Training")
-    parser.add_argument("--cfg-path", default="configs/proteinchat_stage1.yaml", help="path to configuration file.")
+    parser.add_argument("--cfg-path", default="configs/genechat_stage1.yaml", help="path to configuration file.")
     parser.add_argument(
         "--options",
         nargs="+",
@@ -79,8 +81,10 @@ def main():
     datasets = task.build_datasets(cfg)
     model = task.build_model(cfg)
 
+    wandb.init(project='GeneChat', name='Fine-tuning HyenaDNA + Vicuna-7B')
+
     runner = get_runner_class(cfg)(
-        cfg=cfg, job_id=job_id, task=task, model=model, datasets=datasets
+        cfg=cfg, job_id=job_id, task=task, model=model, datasets=datasets, wandb=wandb
     )
 
     runner.train()

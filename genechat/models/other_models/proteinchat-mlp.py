@@ -10,8 +10,8 @@ import torch.nn as nn
 from argparse import ArgumentParser
 import json
 
-from proteinchat.common.registry import registry
-from proteinchat.models.blip2 import Blip2Base, disabled_train
+from genechat.common.registry import registry
+from genechat.models.blip2 import Blip2Base, disabled_train
 
 from anti_1b_code.estimated_ppl import get_embedding, initialize_model_and_tokenizer
 # from anti_1b_code.initialize import 
@@ -50,8 +50,8 @@ class MLP(nn.Module):
         return out
 
 
-@registry.register_model("proteinchat")
-class ProteinChat(Blip2Base):
+@registry.register_model("genechat")
+class GeneChat(Blip2Base):
     """
     BLIP2 GPT-LLAMA model.
     """
@@ -83,7 +83,7 @@ class ProteinChat(Blip2Base):
         device_8bit=0,  # the device of 8bit model should be set when loading and cannot be changed anymore.
     ):
         super().__init__()
-        print("Q_id proteinchat:", q_id)
+        print("Q_id genechat:", q_id)
 
         self.tokenizer = self.init_tokenizer()
         self.low_resource = low_resource

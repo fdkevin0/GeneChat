@@ -5,7 +5,7 @@
  For full license text, see the LICENSE_Lavis file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 """
 
-from proteinchat.runners.runner_base import RunnerBase
-from proteinchat.runners.runner_iter import RunnerIter
+from genechat.runners.runner_base import RunnerBase
+from genechat.runners.runner_iter import RunnerIter
 
 __all__ = ["RunnerBase", "RunnerIter"]

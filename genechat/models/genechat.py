@@ -7,18 +7,22 @@ import torch.nn as nn
 from argparse import ArgumentParser
 import json
 
-from proteinchat.common.registry import registry
-from proteinchat.models.blip2 import Blip2Base, disabled_train
-from proteinchat.models.modeling_llama import LlamaForCausalLM
+from genechat.common.registry import registry
+from genechat.models.blip2 import Blip2Base, disabled_train
+from genechat.models.modeling_llama import LlamaForCausalLM
 from transformers import LlamaTokenizer
 
 from transformers import AutoTokenizer, EsmModel
-# from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
+from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
+
+#Import the Gene Encoder Libraries
+from gene_encoder import HyenaDNAPreTrainedModel, CharacterTokenizer
 
 import time
+from typing import List
 
-@registry.register_model("proteinchat")
-class ProteinChat(Blip2Base):
+@registry.register_model("genechat")
+class GeneChat(Blip2Base):
     """
     BLIP2 GPT-LLAMA model.
     """
@@ -28,8 +32,11 @@ class ProteinChat(Blip2Base):
 
     def __init__(
         self,
-        freeze_protein_encoder=True,
-        freeze_lp=False,
+        freeze_gene_encoder=True,
+        gene_model="",
+        max_gene_length=160000,
+        gene_pool_width=1000,
+        freeze_adaptor=False,
         freeze_llama=True,
         llama_model="",
         embedding_agg=1, 
@@ -44,25 +51,65 @@ class ProteinChat(Blip2Base):
         self.low_resource = low_resource
         self.embedding_agg = embedding_agg
         
-        print('Loading protein encoder')
+        print('\n\n---->Loading Gene Encoder...')
 
-        self.protein_encoder, alphabet = esm.pretrained.esm2_t33_650M_UR50D()
-        self.protein_tokenizer = alphabet.get_batch_converter()
+        #self.protein_encoder, alphabet = esm.pretrained.esm2_t33_650M_UR50D()
+        #self.protein_tokenizer = alphabet.get_batch_converter()
 
-        if freeze_protein_encoder:
-            for name, param in self.protein_encoder.named_parameters():
+        ######################################################################################################  <MAJOR CHANGE>
+        # we need these for the decoder head, if using
+        use_head = False
+
+        # you can override with your own backbone config here if you want,
+        # otherwise we'll load the HF one in None
+        backbone_cfg = None
+
+        # Mode - Pool, Sum, Last
+        mode = 'pool'
+
+        # Max Length
+        self.max_gene_length = max_gene_length
+
+        # Gene Encoder - Hyena DNA Model
+        self.gene_encoder = HyenaDNAPreTrainedModel.from_pretrained(
+            './checkpoints',
+            gene_model,
+            download=True,
+            config=backbone_cfg,
+            device=torch.cuda.current_device(),
+            use_head=use_head,
+            mode=mode
+        )
+
+        # Gene Tokenizer
+        self.gene_tokenier = CharacterTokenizer(
+            characters=['A', 'C', 'G', 'T', 'N'],  
+            model_max_length=self.max_gene_length + 2,  
+            padding_side='left', # since HyenaDNA is causal, we pad on the left
+        )
+
+        # Pooling layer to pool the output of HyenaDNA
+        self.gene_pool_width = gene_pool_width
+        self.avg_pool = torch.nn.AvgPool1d(kernel_size=gene_pool_width, stride=gene_pool_width)
+        ######################################################################################################  </MAJOR CHANGE>
+
+        if freeze_gene_encoder:
+            #Freezing gene encoder parameters
+            for name, param in self.gene_encoder.named_parameters():
                 param.requires_grad = False
-            self.protein_encoder = self.protein_encoder.eval()
-            self.protein_encoder.train = disabled_train
-            logging.info("freeze protein encoder")
+            self.gene_encoder = self.gene_encoder.eval()
+            self.gene_encoder.train = disabled_train
+            logging.info("freeze gene encoder")
         else:
-            self.protein_encoder = self.protein_encoder.train()
+            self.gene_encoder = self.gene_encoder.train()
         
-        print('Loading LLAMA')
-        self.llama_tokenizer = LlamaTokenizer.from_pretrained(llama_model, use_fast=False)
+        print('\n\n---->Loading LLAMA')
 
+        # LLama Tokenizer
+        self.llama_tokenizer = LlamaTokenizer.from_pretrained(llama_model, use_fast=False)
         self.llama_tokenizer.pad_token = self.llama_tokenizer.eos_token
         
+        # LLama Model
         if self.low_resource:
             print("Start Low Resource Mode")
             self.llama_model = LlamaForCausalLM.from_pretrained(
@@ -94,44 +141,91 @@ class ProteinChat(Blip2Base):
             self.llama_model = get_peft_model(self.llama_model, config)
             self.llama_model.print_trainable_parameters()
 
-        self.glm_llama_proj = nn.Linear(
-            1280, self.llama_model.config.hidden_size
+        # Linear layer to align the gene embeddings to the LLama token embedding space
+        self.hyena_llama_proj = nn.Linear(
+            self.gene_encoder.backbone.embeddings.word_embeddings.embedding_dim, self.llama_model.config.hidden_size
         )
-        if freeze_lp:
-            for name, param in self.glm_llama_proj.named_parameters():
+
+        if freeze_adaptor:
+            for name, param in self.hyena_llama_proj.named_parameters():
                 param.requires_grad = False
+
         self.max_txt_len = max_txt_len
         self.end_sym = end_sym
 
-    def encode_protein(self, seqs):
+    def encode_gene(self, seqs):
+        '''
+        Encode the input gene sequence using the HyenaDNA
+        Parameters:
+            seqs            - Batch of gene sequences
+        Output:
+            inputs_llama    - Encoded gene embedding which is projected to the LLama Embedding space
+            atts_llam       - Attention Masks of the input tokens
+        '''
         batch_seqs = []
         for seq in seqs:
-            batch_seqs.append(('protein', seq))
-        batch_labels, batch_strs, batch_tokens = self.protein_tokenizer(batch_seqs)
+            batch_seqs.append(('gene', seq))
+
+        batch_labels, batch_strs, batch_tokens = self.gene_tokenizer(
+                        batch_seqs,
+                        padding="max_length",
+                        truncation=True,
+                        max_length=self.max_gene_length,
+                        return_tensors="pt"
+                    )
+        
         batch_tokens = batch_tokens.to(torch.cuda.current_device())
 
-        # Extract per-residue representations
-        protein_embeds = self.protein_encoder(batch_tokens, repr_layers=[33], return_contacts=True)["representations"][33].to(batch_tokens.device)
+        # Extract the gene embeddings
+        gene_embeds = self.gene_encoder(batch_tokens).to(batch_tokens.device)#self.gene_encoder(batch_tokens, repr_layers=[33], return_contacts=True)["representations"][33].to(batch_tokens.device)
+
+        #Pooling the gene embeddings 
+        #Output of the gene encoder is 160K. Pooling them in fixed intervals to get a smaller sequence of embeddings
+        gene_embeddings_permute = gene_embeds.permute(0, 2, 1)
+        gene_embeddings_permute = self.avg_pool(gene_embeddings_permute)
+        gene_embeds = gene_embeddings_permute.permute(0, 2, 1)
 
         # input llama is of shape [B, len, 5120]
-        if protein_embeds.dtype != self.glm_llama_proj.weight.dtype:
-            protein_embeds = protein_embeds.to(self.glm_llama_proj.weight.dtype)
+        if gene_embeds.dtype != self.hyena_llama_proj.weight.dtype:
+            gene_embeds = gene_embeds.to(self.hyena_llama_proj.weight.dtype)
 
-        inputs_llama = self.glm_llama_proj(protein_embeds.squeeze(dim=2)).to(protein_embeds.device)
+        #Alignment of gene embeddings to the LLama token embedding space
+        inputs_llama = self.hyena_llama_proj(gene_embeds.squeeze(dim=2)).to(gene_embeds.device)
+
         # atts_llama is of shape [B, len]
-        atts_llama = torch.ones(inputs_llama.size()[:-1], dtype=torch.long).to(protein_embeds.device)
+        atts_llama = torch.ones(inputs_llama.size()[:-1], dtype=torch.long).to(gene_embeds.device)
+        
         #print(f'Size of inputs_llama: {inputs_llama.size()}')
         #print(f'Size of atts_llama: {atts_llama.size()}')
+
         return inputs_llama, atts_llama
 
     def prompt_list_wrap(self, img_embeds, atts_img, prompt):
+        '''
+        Wrap the gene embeddings with the pre-gene sequence and post-gene sequence
+        Input to the LLama - pre-gene + gene-sequence + post-gene
+        pre-gene:   'Given the gene sequence'
+        post-gene:  'Question'
+        
+        Parameters:
+            gene_embeds         -   aligned encoded gene embeddings
+            atts_img            -   attention map of the gene tokens
+            prompt              -   entire prompt: pre-gene + <geneHere> + post-gene
+        Output:
+            wrapped_gene_embeds -   embeddings of the wrapped gene sequence - llama input
+            wrapped_atts_img    -   attention maps of the wrapped gene sequence - llama input
+        '''
+
         if prompt:
+
             p_before_lst = []
             p_after_lst = []
+
             for p in prompt:
-                p_before, p_after = p.split('<proteinHere>')
+                p_before, p_after = p.split('<geneHere>')
                 p_before_lst.append(p_before)
                 p_after_lst.append(p_after)
+
             p_before_tokens_lst = self.llama_tokenizer(
                 p_before_lst, return_tensors="pt", add_special_tokens=False).to(img_embeds.device)
 
@@ -149,9 +243,9 @@ class ProteinChat(Blip2Base):
     def forward(self, samples):
         seqs = samples["seq"] # list of seq
         # print(samples)
-        protein_embeds, atts = self.encode_protein(seqs)
+        gene_embeds, atts = self.encode_gene(seqs)
 
-        img_embeds, atts_img = self.prompt_list_wrap(protein_embeds, atts, samples["prompt"])
+        img_embeds, atts_img = self.prompt_list_wrap(gene_embeds, atts, samples["prompt"])
 
         self.llama_tokenizer.padding_side = "right"
 
@@ -164,7 +258,7 @@ class ProteinChat(Blip2Base):
             truncation=True,
             max_length=self.max_txt_len,
             add_special_tokens=False
-        ).to(protein_embeds.device)
+        ).to(gene_embeds.device)
 
         targets = to_regress_tokens.input_ids.masked_fill(
             to_regress_tokens.input_ids == self.llama_tokenizer.pad_token_id, -100
@@ -172,7 +266,7 @@ class ProteinChat(Blip2Base):
 
         empty_targets = (
             torch.ones([atts_img.shape[0], atts_img.shape[1]+1],
-                       dtype=torch.long).to(protein_embeds.device).fill_(-100)  # plus one for bos
+                       dtype=torch.long).to(gene_embeds.device).fill_(-100)  # plus one for bos
         )
         targets = torch.cat([empty_targets, targets], dim=1)
 
@@ -195,20 +289,32 @@ class ProteinChat(Blip2Base):
                 labels=targets,
             )
         logits = outputs.logits
+        
         # print(torch.argmax(logits, dim=2).shape)
         logits = torch.argmax(logits, dim=2)
+        
         #print(self.llama_tokenizer.batch_decode(logits, skip_special_tokens=True)[-400:])
         #print("===========")
+        
         loss = outputs.loss
+        
         return {"loss": loss}
 
     @classmethod
     def from_config(cls, cfg):
-
+        '''
+        Get the configuration parameters from the config file
+        '''
+        
         llama_model = cfg.get("llama_model")
 
-        freeze_protein_encoder = cfg.get("freeze_protein_encoder", False)
-        freeze_lp = cfg.get("freeze_lp", False)
+        gene_model=cfg.get("gene_model")
+        freeze_gene_encoder = cfg.get("freeze_gene_encoder", False)
+        max_gene_length=cfg.get("max_gene_length")
+        gene_pool_width=cfg.get("gene_pool_width")
+
+        freeze_adaptor = cfg.get("freeze_adaptor", False)
+
         freeze_llama = cfg.get("freeze_llama", True)
         low_resource = cfg.get("low_resource", False)
         device_8bit = cfg.get("device_8bit", 0)
@@ -218,8 +324,11 @@ class ProteinChat(Blip2Base):
         embedding_agg = cfg.get("embedding_agg", 1)
 
         model = cls(
-            freeze_protein_encoder=freeze_protein_encoder,
-            freeze_lp=freeze_lp,
+            freeze_gene_encoder=freeze_gene_encoder,
+            gene_model=gene_model,
+            max_gene_length=max_gene_length,
+            gene_pool_width=gene_pool_width,
+            freeze_adaptor=freeze_adaptor,
             freeze_llama=freeze_llama,
             llama_model=llama_model,
             embedding_agg = embedding_agg, 
@@ -229,15 +338,15 @@ class ProteinChat(Blip2Base):
             device_8bit=device_8bit,
         )
 
-        stage1_ckpt = cfg.get("stage1_ckpt", "")  # load weights of encoder and LP
+        stage1_ckpt = cfg.get("stage1_ckpt", "")  # load weights of encoder and adaptor layer
         if stage1_ckpt:
-            print("Load GLM and LP Checkpoint: {}".format(stage1_ckpt))
+            print("\n\n------>Load HyenaDNA and adaptor layer Checkpoint: {}".format(stage1_ckpt))
             ckpt = torch.load(stage1_ckpt, map_location="cpu")
             msg = model.load_state_dict(ckpt['model'], strict=False)
         
         peft_ckpt = cfg.get("peft_ckpt", "")  # load weights of LoRA
         if peft_ckpt:
-            print("Load LoRA Checkpoint: {}".format(peft_ckpt))
+            print("\n\n-------> Load LoRA Checkpoint: {}".format(peft_ckpt))
             ckpt = torch.load(peft_ckpt, map_location="cpu")
             msg = model.load_state_dict(ckpt['model'], strict=False)
             

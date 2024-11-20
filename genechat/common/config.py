@@ -10,7 +10,7 @@ import json
 from typing import Dict
 
 from omegaconf import OmegaConf
-from proteinchat.common.registry import registry
+from genechat.common.registry import registry
 
 
 class Config:
