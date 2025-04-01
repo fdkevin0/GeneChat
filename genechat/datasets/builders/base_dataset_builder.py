@@ -15,9 +15,9 @@ from omegaconf import OmegaConf
 import torch.distributed as dist
 from torchvision.datasets.utils import download_url
 
-import proteinchat.common.utils as utils
-from proteinchat.common.dist_utils import is_dist_avail_and_initialized, is_main_process
-from proteinchat.common.registry import registry
+import genechat.common.utils as utils
+from genechat.common.dist_utils import is_dist_avail_and_initialized, is_main_process
+from genechat.common.registry import registry
 
 
 

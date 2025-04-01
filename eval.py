@@ -22,6 +22,7 @@ def get_simcse(simcse_path, func_text):
 
     weights = [(1.,0,0,0), (1./2., 1./2., 0, 0), (1./3., 1./3., 1./3., 0), (1./4., 1./4., 1./4., 1./4.)]
 
+    bleu_not_1_count = 0
     bleu_list, simcse_list = [[] for i in range(4)], []
     for i in range(len(func_text)):
         item = func_text[i]
@@ -33,17 +34,24 @@ def get_simcse(simcse_path, func_text):
         func_text[i]['bleu'] = bleu
         for ngram in range(4):
             bleu_list[ngram].append(bleu[ngram])
-        simcse_list.append(simcse)
+        if bleu[0] < 0.9:
+            bleu_not_1_count += 1
 
+        simcse_list.append(simcse)
+        
+        #print("\n=======")
+        #print(f"Sample {i}\n Prediction: {item['predict_func']}\nCorrect: {item['correct_func']}\nBLEU: {bleu}")
+        #print("=======\n")
     scores = {}
 
     for ngram in range(4):
         scores[f'average_bleu_{str(ngram+1)}'] = sum(bleu_list[ngram]) / len(bleu_list[ngram])
         
+    print("\n\n=====\n\n Number of samples so far", len(bleu_list[0]), "\n\n=====\n\n")
     scores['average_simcse'] = sum(simcse_list) / len(simcse_list)
     print("Average scores:")
     print(scores)
-
+    print("Number of samples with BLEU 1 not equal to 1:", bleu_not_1_count)
     func_text.append(scores)
 
     return func_text
@@ -115,9 +123,10 @@ def get_simcse_llm_param(simcse_path, func_text):
  
 
 if  __name__ == "__main__":
-    out_dir = "results"
+    #out_dir = "results"
+    simcse_path = "princeton-nlp/sup-simcse-roberta-large"
 
-    with open("results/unstructured-train.json", 'r') as f:
+    with open("/data2/gene_chat/exon_count/data/outputs/train_result_without_duplicates.json", 'r') as f:
         func_text = json.load(f)
     
-    get_simcse(func_text, out_dir)
+    get_simcse(simcse_path, func_text)

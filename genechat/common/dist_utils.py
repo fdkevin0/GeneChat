@@ -78,6 +78,7 @@ def init_distributed_mode(args):
         ),
         flush=True,
     )
+
     torch.distributed.init_process_group(
         backend=args.dist_backend,
         init_method=args.dist_url,
@@ -87,10 +88,22 @@ def init_distributed_mode(args):
             days=365
         ),  # allow auto-downloading and de-compressing
     )
-    torch.distributed.barrier()
+
+    x = torch.tensor(range(32), dtype=torch.float64, device='cuda')
+
+    print('before all_reduce', torch.cuda.current_device())
+    torch.distributed.all_reduce(x)
+    print(x)
+
+    print(f"Rank {args.rank} reached barrier\n")
+    torch.distributed.barrier(device_ids=[torch.cuda.current_device()])
+    print(f"Rank {args.rank} passed barrier\n")
+
+    print(args.dist_backend, args.dist_url, args.world_size, args.rank)
+
     if not args.printable:
         setup_for_distributed(args.rank == 0)
-
+    
 
 def get_dist_info():
     if torch.__version__ < "1.0":

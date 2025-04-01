@@ -954,9 +954,11 @@ class HyenaDNAPreTrainedModel(PreTrainedModel):
 
         
         if os.path.isdir(pretrained_model_name_or_path) and download == False:
+            print("Present")
             if config is None:
                 config = json.load(open(os.path.join(pretrained_model_name_or_path, 'config.json')))
         else:
+            print("Not Present")
             hf_url = f'https://huggingface.co/LongSafari/{model_name}'
 
             subprocess.run(f'rm -rf {pretrained_model_name_or_path}', shell=True)
@@ -969,12 +971,9 @@ class HyenaDNAPreTrainedModel(PreTrainedModel):
 
         scratch_model = HyenaDNAModel(**config, use_head=use_head, n_classes=n_classes, mode=mode)  # the new model format
         
-        torch.serialization.add_safe_globals([ListConfig, ContainerMetadata, Any, list, dict, int, defaultdict, DictConfig, AnyNode, Metadata])
-
         loaded_ckpt = torch.load(
             os.path.join(pretrained_model_name_or_path, 'weights.ckpt'),
-            map_location='cpu',#torch.device(device),
-            weights_only = True
+            map_location=torch.device(device),
         )
 
         #print("###############", type(loaded_ckpt), device)

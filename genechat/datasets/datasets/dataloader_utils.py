@@ -8,7 +8,7 @@
 import time
 import random
 import torch
-from proteinchat.datasets.data_utils import move_to_cuda
+from genechat.datasets.data_utils import move_to_cuda
 from torch.utils.data import DataLoader
 
 

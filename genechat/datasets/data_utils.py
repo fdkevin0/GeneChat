@@ -22,8 +22,8 @@ import numpy as np
 import torch
 from torch.utils.data.dataset import IterableDataset
 
-from proteinchat.common.registry import registry
-from proteinchat.datasets.datasets.base_dataset import ConcatDataset
+from genechat.common.registry import registry
+from genechat.datasets.datasets.base_dataset import ConcatDataset
 
 
 decord.bridge.set_bridge("torch")

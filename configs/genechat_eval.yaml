@@ -1,0 +1,38 @@
+model:
+  arch: genechat
+  model_type: pretrain_vicuna
+
+  freeze_gene_encoder: True
+  freeze_adaptor: True
+  freeze_llama: False
+
+  max_gene_length: 160000
+  gene_pool_width: 300
+
+  gene_model: "hyenadna-medium-160k-seqlen"
+  llama_model: "/data2/gene_chat/llama_pretrained/vicuna-13b-v1.5"
+
+  # generation configs
+  prompt: ""
+  
+  max_txt_len: 512
+  end_sym: "###"
+  low_resource: False
+  embedding_agg: 1
+  peft_ckpt: ''
+  stage1_ckpt: '/data2/gene_chat/exon_count/data/checkpoints/20250309073/checkpoint_170001.pth'
+
+datasets:
+  seq:
+    data_type: gene
+    build_info:
+      train:
+        storage: /data2/gene_chat/exon_count/data/train_with_names/test_set
+
+run:
+  task: protein_text_pretrain
+  device: "cuda"
+  world_size: 1
+  dist_url: "env://"
+  distributed: True
+  printable: True

@@ -7,7 +7,7 @@
 
 import math
 
-from proteinchat.common.registry import registry
+from genechat.common.registry import registry
 
 
 @registry.register_lr_scheduler("linear_warmup_step_lr")

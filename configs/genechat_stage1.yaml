@@ -3,24 +3,19 @@ model:
   model_type: pretrain_vicuna
 
   # Stage 1
-  freeze_gene_encoder: False
-  freeze_adaptor: False
-  freeze_llama: True
+  freeze_gene_encoder: True
+  freeze_adaptor: True
+  freeze_llama: False
 
   max_gene_length: 160000
-  gene_pool_width: 400
+  gene_pool_width: 300
   
   gene_model: "hyenadna-medium-160k-seqlen"
 
-  # Stage 2
-  # freeze_protein_encoder: True
-  # freeze_lp: True
-  # freeze_llama: False
-
-  llama_model: "/home/akash/gene_chat/llama_pretrained/vicuna-7b-v1.5"
+  llama_model: "/data2/gene_chat/llama_pretrained/vicuna-13b-v1.5"
   prompt: ""
 
-  max_txt_len: 5112
+  max_txt_len: 512
   end_sym: "###"
   low_resource: False
   embedding_agg: 1
@@ -32,34 +27,35 @@ datasets:
     data_type: gene
     build_info:
       train:
-        storage: /data2/gene_chat/exon_count/data/train_set
+        storage: /data2/gene_chat/exon_count/data/train_without_duplicates
 
 run:
   task: protein_text_pretrain
   # optimizer
   lr_sched: "linear_warmup_cosine_lr"
-  init_lr: 1e-5
+  init_lr: 1e-4
   min_lr: 1e-6
   warmup_lr: 1e-6
   accum_grad_iters: 4
 
-  weight_decay: 0.05
-  max_epoch: 5
-  # max_iters: 10
-  # iters_per_inner_epoch: 2
-  iters_per_epoch: 100000
+  weight_decay: 0
+  max_epoch: 10 #10
+  max_iters: 2000000
+  iters_per_inner_epoch: 5000
+
+  #iters_per_epoch: 5000
   batch_size_train: 1
   batch_size_eval: 1
   num_workers: 4
-  warmup_steps: 2000
+  warmup_steps: 2500
 
   seed: 42
-  output_dir: "/data1/mingjia/protein/proteinchat_output/esm"
+  output_dir: "/data2/gene_chat/exon_count/data/checkpoints"
 
   amp: True
-  resume_ckpt_path: null
+  resume_ckpt_path: #'/data2/gene_chat/exon_count/data/checkpoints/20250306002/checkpoint_70000.pth'
 
-  printable: False # whether all ranks can print (True) or only rank 0 can print (False)
+  printable: True # whether all ranks can print (True) or only rank 0 can print (False)
 
   evaluate: False 
   train_splits: ["train"]

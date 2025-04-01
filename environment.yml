@@ -1,4 +1,4 @@
-name: genechat
+name: dnabert
 channels:
   - pytorch
   - defaults

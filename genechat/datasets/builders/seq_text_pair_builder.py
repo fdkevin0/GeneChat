@@ -2,9 +2,9 @@ import os
 import logging
 import warnings
 
-from proteinchat.common.registry import registry
-from proteinchat.datasets.builders.base_dataset_builder import BaseDatasetBuilder
-from proteinchat.datasets.datasets.seq_dataset import SeqDataset
+from genechat.common.registry import registry
+from genechat.datasets.builders.base_dataset_builder import BaseDatasetBuilder
+from genechat.datasets.datasets.seq_dataset import SeqDataset
 
 @registry.register_builder("seq")
 class SeqBuilder(BaseDatasetBuilder):

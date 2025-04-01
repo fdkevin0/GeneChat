@@ -1,6 +1,6 @@
 import os
 import sys
-from proteinchat.datasets.datasets.base_dataset import BaseDataset
+from genechat.datasets.datasets.base_dataset import BaseDataset
 from torch.utils.data.dataloader import default_collate
 import json
 from torch.nn.utils.rnn import pad_sequence 
@@ -8,8 +8,6 @@ import torch
 import random
 
 questions = ["Tell me about this gene.", 
-                "What is the functionality of this gene?", 
-                "Briefly summarize the functionality of this gene.",
                 "Please provide a detailed description of the gene."]
 q_map = {
     "Which organism does the gene belong to?":
@@ -56,27 +54,35 @@ class SeqDataset(BaseDataset):
     def __getitem__(self, index):
         
         if index < self.split1: # sample kw 
-            uniprot_id = self.kw[index]["Gene Id"]
+            gene_id = self.kw[index]["Gene Id"]
             answer = self.kw[index]["A"]
             query = self.kw[index]['Q']
             query += q_map[query]
-            prompt = f"###Human: <gene><geneHere></gene> {query} ###Assistant:"
+            prompt = f"###Human: <gene>{gene_id}<geneHere></gene> {query} ###Assistant:"
         elif index < self.split2: # sample rule based functionality
             true_index  = (index - self.split1) % self.len_rule
-            uniprot_id = self.rule[true_index]["Gene Id"]
+            gene_id = self.rule[true_index]["Gene Id"]
             answer = self.rule[true_index]["Summary"]
-            prompt = f"###Human: <gene><geneHere></gene> {random.choice(questions)} ###Assistant:"
+
+            '''
+            ########################################################################################################################################## - CHANGE 
+            if 'Name' in self.rule[true_index]:
+                name = self.rule[true_index]["Name"]
+                prompt = f"###Human: <gene>{name}-{gene_id}<geneHere></gene> {random.choice(questions)} ###Assistant:"
+            else:
+                prompt = f"###Human: <gene>{gene_id}<geneHere></gene> {random.choice(questions)} ###Assistant:"
+            ########################################################################################################################################## - CHANGE 
+            '''
+            prompt = f"###Human: <gene>:wq<geneHere></gene> {random.choice(questions)} ###Assistant:"
         else: # sample manual annotated functionality
             true_index  = (index - self.split2) % self.len_manual
-            uniprot_id = self.manual[true_index]["Gene Id"]
+            gene_id = self.manual[true_index]["Gene Id"]
             answer = self.manual[true_index]["Summary"]
         
-        seq = self.sequence[uniprot_id]
+        seq = self.sequence[gene_id]
 
-        '''
-        if len(seq) > 600:
-            seq = seq[:600]
-        '''
+        if len(seq[0]) > 160000:
+            seq[0] = seq[0][:159999]
 
         return {
             "seq": seq,
@@ -85,8 +91,8 @@ class SeqDataset(BaseDataset):
         }
 
     # stage1-Qformer
-        # uniprot_id = self.annotation[index]["uniprot_id"]
-        # seq = self.sequence[uniprot_id]
+        # gene_id = self.annotation[index]["gene_id"]
+        # seq = self.sequence[gene_id]
         # answer = self.annotation[index]["name"]
 
         # if len(seq) > 1024:

@@ -206,6 +206,7 @@ class BaseTask:
         When using epoch-based, training stops after one epoch; when using iter-based,
         training stops after #iters_per_epoch iterations.
         """
+
         start = time.time()
         # print(f"[base_task] _train_inner_loop -----------------------------")
         use_amp = scaler is not None

@@ -136,18 +136,23 @@ class Chat:
                           torch.tensor([2277, 29937]).to(self.device)]  # '###' can be encoded in two different ways.
         self.stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=stop_words_ids)])
 
-    def ask(self, text, conv):
+    def ask(self, text, conv, function=None):
         if len(conv.messages) > 0 and conv.messages[-1][0] == conv.roles[0] \
                 and conv.messages[-1][1][-6:] == '</gene>':  # last message is image.
             conv.messages[-1][1] = ' '.join([conv.messages[-1][1], text])
         else:
             conv.append_message(conv.roles[0], text)
+            if function is not None:
+                conv.append_message(conv.roles[1], function)
         
-        # print("===after ask:", conv)
+        #print("===after ask:", conv)
 
-    def answer(self, conv, img_list, max_new_tokens=300, num_beams=1, min_length=1, top_p=0.9,
-               repetition_penalty=1.0, length_penalty=1, temperature=1.0, max_length=2000, save_embeds=False):
+    def answer(self, conv, img_list, max_new_tokens=356, num_beams=1, min_length=1, top_p=0.9,
+               repetition_penalty=1.9, length_penalty=1, temperature=1.0, max_length=512, save_embeds=False):
         conv.append_message(conv.roles[1], None)
+
+        ####################################################################################################    CHANGE
+        
         embs = self.get_context_emb(conv, img_list)
 
         if save_embeds:
@@ -162,7 +167,6 @@ class Chat:
 
         embs = embs[:, begin_idx:]
 
-        # print("num_beams, temperature", num_beams, temperature)
         with self.model.maybe_autocast():   
             outputs = self.model.llama_model.generate(
                 inputs_embeds=embs,
@@ -182,12 +186,14 @@ class Chat:
             neg_log_likelihood = results.loss.item()
         
         output_token = outputs[0]
+
         if output_token[0] == 0:  # the model might output a unknow token <unk> at the beginning. remove it
             output_token = output_token[1:]
-        if output_token[0] == 1:  # some users find that there is a start token <s> at the beginning. remove it
+        while output_token[0] == 1:  # some users find that there is a start token <s> at the beginning. remove it
             output_token = output_token[1:]
 
         output_text = self.model.llama_tokenizer.decode(output_token, add_special_tokens=False)
+
         output_text = output_text.split('###')[0]  # remove the stop sign '###'
         output_text = output_text.split('Assistant:')[-1].strip()
         conv.messages[-1][1] = output_text
@@ -242,21 +248,42 @@ class Chat:
         return conf_list
 
 
-    def upload_gene(self, seq, conv, gene_list):
+    def upload_gene(self, seq, conv, gene_list, gene_id=0, name=None):
+
         gene_embeds, _ = self.model.encode_gene([seq])
-        #gene_embeds = rearrange(gene_embeds, 't b c -> b t c')
+        #gene_embeds = 0
         gene_list.append(gene_embeds)
-        conv.append_message(conv.roles[0], "<gene><geneHere></gene>")
+
+        conv.append_message(conv.roles[0], f"<gene><geneHere></gene>")
+        '''
+        ########################################################################################################################################## - CHANGE
+        if name is not None:
+            conv.append_message(conv.roles[0], f"<gene>{name} - {gene_id}<geneHere></gene>")
+        else:
+            conv.append_message(conv.roles[0], f"<gene>{gene_id}<geneHere></gene>")
+        ########################################################################################################################################## - CHANGE
+        '''
+
         msg = "Received."
         # self.conv.append_message(self.conv.roles[1], msg)
         return gene_embeds, msg
 
     def get_context_emb(self, conv, img_list):
+
+        ####################################################################################################    CHANGE
         prompt = conv.get_prompt()
-        # print("===prompt:", prompt)
+        #print("===prompt:", prompt)
         prompt_segs = prompt.split('<geneHere>')
-        # print("prompt_segs", prompt_segs)
-        # print("=====")
+        
+        
+        ########################################################################################################################################## - CHANGE
+        #prompt_segs[-1] = prompt_segs[-1][:-13]
+        ########################################################################################################################################## - CHANGE
+        
+
+        print("prompt_segs", prompt_segs)
+        print("=====")
+
         assert len(prompt_segs) == len(img_list) + 1, "Unmatched numbers of gene placeholders and genes."
         seg_tokens = [
             self.model.llama_tokenizer(
@@ -264,20 +291,33 @@ class Chat:
             # only add bos to the first seg
             for i, seg in enumerate(prompt_segs)
         ]
-        # for seg in seg_tokens:
-        #     print("seg_token", seg)
-        #     print("seg_token", seg.shape)
-        # print("=====")
+        
+        #print(img_list)
+        #for seg in seg_tokens:
+        #    print("Inputs: ", self.model.llama_tokenizer.decode(seg[0], add_special_tokens=False))
+        #    print("seg_token", seg.shape)
+        #print("=====")
+        
         seg_embs = [self.model.llama_model.model.embed_tokens(seg_t) for seg_t in seg_tokens]
-        # for seg in seg_embs:
-        #     print("seg_emb", seg.shape)
-        # print("=====")
+        
+        #for seg in seg_embs:
+        #    print("seg_emb", seg.shape)
+        #print("=====")
+        
+        ########################################################################################################################################## - CHANGE
+        #mixed_embs = [seg_embs[0]] + [seg_embs[-1]]
+        ########################################################################################################################################## - CHANGE
+
+        
         mixed_embs = [emb for pair in zip(seg_embs[:-1], img_list) for emb in pair] + [seg_embs[-1]]
-        # for seg in mixed_embs:
-        #     print("mixed_emb", seg.shape)
-        # print("=====")
+        
+
+        #for seg in mixed_embs:
+        #    print("mixed_emb", seg.shape)
+        #print("=====")
+        
         mixed_embs = torch.cat(mixed_embs, dim=1)
-        # print(mixed_embs.shape)
+        
         return mixed_embs
 
 

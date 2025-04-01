@@ -93,6 +93,7 @@ class RunnerIter(RunnerBase):
                 )
 
                 train_stats = self.train_iters(self.cur_epoch, start_iters, wandb=self.wandb)
+                self._save_checkpoint(self.cur_epoch, is_best=False)
                 self.log_stats(split_name="train", stats=train_stats)
 
             # evaluation phase

@@ -64,7 +64,7 @@ def get_runner_class(cfg):
     """
     Get runner class from config. Default to epoch-based runner.
     """
-    runner_cls = registry.get_runner_class(cfg.run_cfg.get("runner", "runner_base"))
+    runner_cls = registry.get_runner_class(cfg.run_cfg.get("runner", "runner_iter"))
 
     return runner_cls
 
@@ -73,6 +73,7 @@ def main():
     job_id = now()
     cfg = Config(parse_args())
     init_distributed_mode(cfg.run_cfg)
+    print('Initialised Distributed model')
     setup_seeds(cfg)
     setup_logger()
     cfg.pretty_print()
@@ -81,7 +82,7 @@ def main():
     datasets = task.build_datasets(cfg)
     model = task.build_model(cfg)
 
-    wandb.init(project='GeneChat', name='Fine-tuning HyenaDNA + Vicuna-7B')
+    wandb.init(project='GeneChat-DNABERT', name='Fine-tuning Vicuna-13B, Freeze DNABERT2')
 
     runner = get_runner_class(cfg)(
         cfg=cfg, job_id=job_id, task=task, model=model, datasets=datasets, wandb=wandb

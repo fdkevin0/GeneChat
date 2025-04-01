@@ -5,9 +5,9 @@
  For full license text, see the LICENSE_Lavis file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 """
 
-from proteinchat.datasets.builders.base_dataset_builder import load_dataset_config
-from proteinchat.datasets.builders.seq_text_pair_builder import SeqBuilder
-from proteinchat.common.registry import registry
+from genechat.datasets.builders.base_dataset_builder import load_dataset_config
+from genechat.datasets.builders.seq_text_pair_builder import SeqBuilder
+from genechat.common.registry import registry
 
 __all__ = [
     "SeqBuilder"

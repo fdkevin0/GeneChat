@@ -93,6 +93,8 @@ class RunnerBase:
                     self._wrapped_model = DDP(
                         self._model, device_ids=[self.config.run_cfg.gpu], find_unused_parameters=True
                     )
+
+                print("Model wrapped with DDP")
             else:
                 self._wrapped_model = self._model
 
@@ -265,6 +267,7 @@ class RunnerBase:
 
             collate_fns = []
             for dataset in datasets:
+                
                 if isinstance(dataset, tuple) or isinstance(dataset, list):
                     collate_fns.append([getattr(d, "collater", None) for d in dataset])
                 else:
@@ -411,9 +414,11 @@ class RunnerBase:
             # training phase
             if not self.evaluate_only:
                 logging.info("Start training")
+                logging.info("Epoch {}".format(cur_epoch))
                 train_stats = self.train_epoch(cur_epoch, wandb=self.wandb)
                 self.log_stats(split_name="train", stats=train_stats)
-
+                self._save_checkpoint(cur_epoch, is_best=False)
+                
             # evaluation phase
             if len(self.valid_splits) > 0:
                 for split_name in self.valid_splits:
