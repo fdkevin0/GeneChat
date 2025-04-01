@@ -11,10 +11,10 @@ Examples of multi-round dialogues with ProteinChat for Q9U281, Q9XZG9, and Q9LU4
 -->
 
 ## Introduction
-- ProteinChat is a versatile, multi-modal large language model designed to predict protein functions from amino acid sequences.
-- ProteinChat works in a similar way as ChatGPT. Users upload a protein sequence and ask various questions about this protein. ProteinChat will answer these questions in a multi-turn, interactive manner. 
-- The ProteinChat system consists of a protein encoder, a large language model (LLM), and an adaptor. The protein encoder takes a protein sequence as input and learns a representation for this protein. The adaptor transforms the protein representation produced by the protein encoder into another representation that is acceptable to the LLM. The LLM takes the representation transformed by the adaptor and users' questions about this protein as inputs and generates answers. All these components are trained end-to-end. We use [esm2_t33_650M_UR50D](https://github.com/facebookresearch/esm) as the protein encoder in this github repo. Note that in our paper, we use [xTrimoPGLM-1B](https://arxiv.org/abs/2401.06199) as the protein encoder, which can give better performance on the prediction tasks.
-- To train ProteinChat, we designed (protein, prompt, answer) triplets from the functions and keywords from Swiss-Prot dataset, resulting in ~500k proteins and 1.5 million triplets.
+- GeneChat is a multi-modal large language model designed to predict gene functions from genomic sequences.
+- GeneChat works in a similar way as ChatGPT. Users can upload a genomic sequence and ask various questions about this gene. GeneChat will answer these questions in a multi-turn, interactive manner. 
+- The GeneChat system consists of a gene encoder, a large language model (LLM), and an adaptor. The gene encoder takes a genomic sequence as input and learns a representation for this gene. The adaptor transforms the gene representation produced by the gene encoder into another representation that is acceptable to the LLM. The LLM takes the representation transformed by the adaptor and users' questions about this gene as inputs and generates answers. All these components are trained end-to-end. We use [DNABERT2](https://github.com/facebookresearch/esm) as the gene encoder.
+- To train GeneChat, we designed (gene, prompt, answer) triplets from the NCBI dataset, resulting in ~47k genes.
 
 ![overview](fig/GeneChat.png)
 
@@ -28,7 +28,7 @@ Git clone our repository, creating a python environment and ativate it via the f
 
 ```bash
 git clone https://github.com/Shashi-Sekar/GeneChat.git
-cd ProteinChat
+cd GeneChat
 conda env create -f environment.yml
 conda activate genechat
 ```
