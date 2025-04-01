@@ -1,13 +1,14 @@
-# Multi-Modal Large Language Model Enables Protein Function Prediction
+# GeneChat: Multi-Modal Large Language Model Enables Gene Function Prediction
 
-This repository holds the code and data of [Multi-Modal Large Language Model Enables Protein Function Prediction](https://www.biorxiv.org/content/10.1101/2024.08.19.608729v1).
+This repository contains the code and data of GeneChat: Multi-Modal Large Language Model Enables Gene Function Prediction<!--(https://www.biorxiv.org/content/10.1101/2024.08.19.608729v1).-->
 
-
+<!--
 ## Examples
 
-![Eg1](fig/example.png) 
+ ![Eg1](fig/example.png)  
 
 Examples of multi-round dialogues with ProteinChat for Q9U281, Q9XZG9, and Q9LU44.
+-->
 
 ## Introduction
 - ProteinChat is a versatile, multi-modal large language model designed to predict protein functions from amino acid sequences.
@@ -15,7 +16,7 @@ Examples of multi-round dialogues with ProteinChat for Q9U281, Q9XZG9, and Q9LU4
 - The ProteinChat system consists of a protein encoder, a large language model (LLM), and an adaptor. The protein encoder takes a protein sequence as input and learns a representation for this protein. The adaptor transforms the protein representation produced by the protein encoder into another representation that is acceptable to the LLM. The LLM takes the representation transformed by the adaptor and users' questions about this protein as inputs and generates answers. All these components are trained end-to-end. We use [esm2_t33_650M_UR50D](https://github.com/facebookresearch/esm) as the protein encoder in this github repo. Note that in our paper, we use [xTrimoPGLM-1B](https://arxiv.org/abs/2401.06199) as the protein encoder, which can give better performance on the prediction tasks.
 - To train ProteinChat, we designed (protein, prompt, answer) triplets from the functions and keywords from Swiss-Prot dataset, resulting in ~500k proteins and 1.5 million triplets.
 
-![overview](fig/workflow.png)
+![overview](fig/GeneChat.png)
 
 
 ## Getting Started
@@ -26,10 +27,10 @@ Examples of multi-round dialogues with ProteinChat for Q9U281, Q9XZG9, and Q9LU4
 Git clone our repository, creating a python environment and ativate it via the following command
 
 ```bash
-git clone https://github.com/mignonjia/ProteinChat.git
+git clone https://github.com/Shashi-Sekar/GeneChat.git
 cd ProteinChat
 conda env create -f environment.yml
-conda activate proteinchat
+conda activate genechat
 ```
 
 Verify the installation of `torch` and `torchvision` is successful by running `python -c "import torchvision; print(torchvision.__version__)"`. If it outputs the version number without any warnings or errors, then you are good to go. __If it outputs any warnings or errors__, try to uninstall `torch` by `conda uninstall pytorch torchvision torchaudio cudatoolkit` and then reinstall them following [here](https://pytorch.org/get-started/previous-versions/#v1121). You need to find the correct command according to the CUDA version your GPU driver supports (check `nvidia-smi`). 
@@ -37,7 +38,7 @@ Verify the installation of `torch` and `torchvision` is successful by running `p
 **2. Prepare the dataset**
 
 The dataset contains 462,019 proteins (represented using 3D structures) with 1.5 million instructions. It is curated from the [Swiss-Prot Dataset](https://www.uniprot.org/uniprotkb?query=*&facets=reviewed%3Atrue). 
-The dataset `data.tar.gz` (148 MB) can be downloaded [here](https://drive.google.com/file/d/1n5Ant3S5QE0Yx-DznRa3lannFanc1WB7/view?usp=sharing). Copy it under this folder and run 
+The dataset `data.tar.gz` (148 MB) can be downloaded [here](https://drive.google.com/drive/folders/1g0Pe0HxfzdhXWbG54rkd-Iya7c6wYZdO?usp=sharing). Copy it under this folder and run 
 ```bash
 tar -xvf data.tar.gz
 ```
@@ -85,8 +86,8 @@ bash demo.sh
 
 ## Acknowledgement
 
-+ [xTrimoPGLM](https://arxiv.org/abs/2401.06199)
-+ [ESM](https://github.com/facebookresearch/esm)
++ [DNABERT2](https://github.com/MAGICS-LAB/DNABERT_2)
++ [HyenaDNA](https://github.com/HazyResearch/hyena-dna)
 + [MiniGPT-4](https://minigpt-4.github.io/) 
 + [Lavis](https://github.com/salesforce/LAVIS)
 + [Vicuna](https://github.com/lm-sys/FastChat)
