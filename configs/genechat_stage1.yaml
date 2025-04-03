@@ -53,7 +53,7 @@ run:
   output_dir: "/data2/gene_chat/exon_count/data/checkpoints"
 
   amp: True
-  resume_ckpt_path: #'/data2/gene_chat/exon_count/data/checkpoints/20250306002/checkpoint_70000.pth'
+  resume_ckpt_path: 
 
   printable: True # whether all ranks can print (True) or only rank 0 can print (False)
 
