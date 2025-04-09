@@ -445,10 +445,6 @@ class GeneChat(Blip2Base):
             print("\n\n------>Load HyenaDNA and adaptor layer Checkpoint: {}".format(stage1_ckpt))
             ckpt = torch.load(stage1_ckpt, map_location="cpu")
             msg = model.load_state_dict(ckpt['model'], strict=False)
-            for key, value in ckpt['model'].items():
-                if 'gene_encoder' in key:
-                    print(key, value)
-            #print(msg)
         peft_ckpt = cfg.get("peft_ckpt", "")  # load weights of LoRA
         if peft_ckpt:
             print("\n\n-------> Load LoRA Checkpoint: {}".format(peft_ckpt))
