@@ -1,6 +1,6 @@
 # GeneChat: Multi-Modal Large Language Model Enables Gene Function Prediction
 
-This repository contains the code and data of GeneChat: Multi-Modal Large Language Model Enables Gene Function Prediction (https://www.biorxiv.org/content/10.1101/2025.06.05.658031v1).
+This repository contains the code and data of GeneChat: Multi-Modal Large Language Model Enables Gene Function Prediction [Manuscript](https://www.biorxiv.org/content/10.1101/2025.06.05.658031v1).
 
 <!--
 ## Examples
