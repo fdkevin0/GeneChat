@@ -4,7 +4,7 @@ time and provides a single API surface so no other genechat code needs to
 branch on device type.
 
 After this module, all device operations flow through:
-    from genechat.common import device as genechat_device
+    import gcu_device as genechat_device
     genechat_device.to_device(tensor)
     genechat_device.autocast(dtype=torch.bfloat16)
     genechat_device.Stream()

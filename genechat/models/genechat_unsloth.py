@@ -21,6 +21,8 @@ from typing import List
 import torch
 import torch.nn as nn
 
+import gcu_device as genechat_device
+
 # ═══════════════════════════════════════════════════════════════════════
 # PHASE 1: Pre-unsloth patches (consolidated)
 # ═══════════════════════════════════════════════════════════════════════
@@ -76,7 +78,7 @@ class GeneChatUnsloth(Blip2Base):
         super().__init__()
 
         self.tokenizer = self.init_tokenizer()
-        self._target_device = torch.device("xpu" if torch.xpu.is_available() else "cuda")
+        self._target_device = genechat_device.device()
 
         # ── Gene Encoder (DNABERT-2, frozen) ──────────────────────────
         logging.info("Loading Gene Encoder — DNABERT-2 ...")

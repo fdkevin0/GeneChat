@@ -4,10 +4,10 @@ Consolidated XPU patches for Intel Arc GPUs (A770, B580, etc.).
 All genuine hardware/library bugs and third-party compatibility workarounds
 live here in ONE place. GeneChat entry scripts that need XPU support just:
 
-    from genechat.common.xpu_patches import apply_phase1_patches
+    from gcu_xpu import apply_phase1_patches
     apply_phase1_patches()       # before import unsloth
     import unsloth
-    from genechat.common.xpu_patches import apply_phase2_patches
+    from gcu_xpu import apply_phase2_patches
     apply_phase2_patches()       # after import unsloth
 
 Bug-fix reference (17 bugs documented):
@@ -165,9 +165,10 @@ def patch_dnabert2_flash_attn() -> None:
 # Phase 2: Post-Unsloth patches (third-party library compatibility)
 # ===================================================================
 # These run AFTER `import unsloth`. They patch torch.cuda.* for
-# transformers/accelerate/bitsandbytes compatibility. They do NOT
-# duplicate genechat.common.device — genechat's own code should use
-# that module instead.
+# transformers/accelerate/bitsandbytes compatibility (third-party code
+# that calls torch.cuda.* directly, bypassing gcu_device.py). They do NOT
+# duplicate gcu_device.py — genechat's own code should use that module
+# instead.
 # ═══════════════════════════════════════════════════════════════════════
 
 _PHASE2_APPLIED = False
