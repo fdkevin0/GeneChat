@@ -1,0 +1,115 @@
+[project]
+name = "genechat"
+version = "0.1.0"
+description = "GeneChat: DNA sequence → LLM multimodal model"
+requires-python = ">=3.12"
+dependencies = [
+    # ============================================================
+    # Core ML Framework (XPU build — pinned to Intel index)
+    # ============================================================
+    "torch>=2.13.0",
+    "transformers>=5.13.0",
+    "peft>=0.19.0",
+    "accelerate>=1.14.0",
+    "bitsandbytes>=0.49.0",
+    "datasets>=4.3.0",
+
+    # ============================================================
+    # Unsloth + Triton (XPU-aware QLoRA training)
+    # ============================================================
+    "unsloth>=2026.6",
+    "unsloth-zoo>=2026.7",
+    "triton-xpu>=3.7.0",
+    "pytorch-triton-xpu>=3.3.0",
+
+    # ============================================================
+    # Domain: Genomics, Proteins, NLP
+    # ============================================================
+    "einops>=0.8.0",
+    "fair-esm>=2.0.0",
+    "sentence-transformers>=5.6.0",
+    "sentencepiece>=0.2.0",
+    "tokenizers>=0.22.0",
+    "nltk>=3.10.0",
+
+    # ============================================================
+    # HuggingFace ecosystem
+    # ============================================================
+    "huggingface-hub>=1.22.0",
+    "safetensors>=0.8.0",
+
+    # ============================================================
+    # Config & CLI
+    # ============================================================
+    "omegaconf>=2.3.0",
+    "pyyaml>=6.0.0",
+
+    # ============================================================
+    # Data Processing
+    # ============================================================
+    "webdataset>=1.0.0",
+    "numpy>=2.5.0",
+    "pandas>=3.0.0",
+    "scipy>=1.18.0",
+    "scikit-learn>=1.9.0",
+
+    # ============================================================
+    # I/O & Media
+    # ============================================================
+    "iopath>=0.1.10",
+    "decord>=0.6.0",
+    "pycocotools>=2.0.0",
+    "pillow>=12.0.0",
+
+    # ============================================================
+    # Visualization & Logging
+    # ============================================================
+    "matplotlib>=3.11.0",
+    "wandb>=0.28.0",
+
+    # ============================================================
+    # Utilities
+    # ============================================================
+    "tqdm>=4.68.0",
+]
+
+[project.optional-dependencies]
+# Extra packages pulled in by unsloth/training — list explicitly
+# so uv knows they should come from the XPU index
+xpu-extras = [
+    "torchaudio>=2.11.0",
+    "torchvision>=0.28.0",
+    "torchao>=0.17.0",
+    "trl>=0.24.0",
+    "diffusers>=0.39.0",
+    "timm>=1.0.0",
+    "cut-cross-entropy>=25.1.0",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["genechat*"]
+
+# ============================================================
+# XPU Index Configuration
+# ============================================================
+# Intel Arc GPU requires PyTorch distributed via
+#   https://download.pytorch.org/whl/xpu
+# The packages below MUST resolve from this index rather than
+# the default PyPI, which only carries CUDA builds.
+
+[tool.uv.sources]
+torch         = { index = "pytorch-xpu" }
+torchaudio    = { index = "pytorch-xpu" }
+torchvision   = { index = "pytorch-xpu" }
+triton-xpu    = { index = "pytorch-xpu" }
+pytorch-triton-xpu = { index = "pytorch-xpu" }
+torchao       = { index = "pytorch-xpu" }
+
+[[tool.uv.index]]
+name = "pytorch-xpu"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true

@@ -173,6 +173,107 @@ def patch_dnabert2_flash_attn() -> None:
 _PHASE2_APPLIED = False
 
 
+def _patch_unsloth_dequantize_xpu() -> None:
+    """Bug #19: unsloth calls bitsandbytes C dequantize fns with raw pointers.
+
+    bitsandbytes 0.49.2 has no XPU native lib — the ErrorHandlerMock raises
+    RuntimeError on call.  Replace the three module-level symbols in
+    unsloth.kernels.utils with PyTorch-tensor implementations that match
+    the C functions' semantics.
+
+    We cannot recover tensors from raw ctypes pointers, so we walk up one
+    stack frame into fast_dequantize and use its local variables directly.
+    This is a monkey-patch — remove once bitsandbytes ships a compiled XPU
+    native library.
+    """
+    try:
+        import unsloth.kernels.utils as _uku
+    except ImportError:
+        return
+
+    if getattr(_uku, "DEVICE_TYPE", "") != "xpu":
+        return
+
+    import torch as _torch
+
+    # NF4 asymmetric lookup table (matching bitsandbytes C library).
+    # Indices 0-6: negative, 7: zero, 8-247: zeros (padding),
+    # 248-255: positive.  The 4-bit index (0-15) is used directly.
+    _NF4_TABLE = _torch.tensor([
+        -1.0000000000, -0.6961928010, -0.5250730515, -0.3949174881,
+        -0.2844413817, -0.1847734302, -0.0910500363,  0.0000000000,
+         0.0795802996,  0.1609302014,  0.2461123019,  0.3379152417,
+         0.4407098293,  0.5626170039,  0.7229568362,  1.0000000000,
+    ])
+
+    def _dequant_blockwise_fp32(
+        code_ptr, A_ptr, absmax_ptr, out_ptr,
+        blocksize, n_elements, stream,
+    ) -> None:
+        """Pure-PyTorch: dequantize 8-bit blockwise → float32 (vectorized)."""
+        import sys as _sys
+        frame = _sys._getframe(1)
+        locs = frame.f_locals
+        code2 = locs["code2"]
+        absmax_q = locs["absmax"]
+        absmax2_s = locs["absmax2"]
+        out_absmax = locs["out_absmax"]
+        blocksize2 = locs["blocksize2"]
+
+        # Vectorized: reshape absmax_q to [n_blocks, blocksize], index, scale
+        n_blk2 = absmax_q.numel() // blocksize2
+        absmax_q_r = absmax_q.view(n_blk2, blocksize2)
+        out_absmax_r = out_absmax.view(n_blk2, blocksize2)
+        out_absmax_r.copy_(code2[absmax_q_r.long()] * absmax2_s.view(-1, 1))
+        out_absmax.add_(locs["offset"])
+
+    def _dequant_blockwise_nf4(
+        code_ptr, A_ptr, absmax_ptr, out_ptr,
+        blocksize, n_elements, stream,
+    ) -> None:
+        """Vectorized NF4 dequantize for fp16/bf16 output."""
+        import sys as _sys
+        frame = _sys._getframe(1)
+        locs = frame.f_locals
+        W = locs["W"]
+        out = locs["out"]
+        out_absmax = locs["out_absmax"]
+        blocksize = locs["blocksize"]
+        dtype = locs["dtype"]
+        n_blk = out.numel() // blocksize
+        half_bs = blocksize // 2
+
+        nf4_tbl = _NF4_TABLE.to(device=W.device, dtype=_torch.float32)
+
+        # Reshape packed weights to [n_blk, half_bs] for blockwise processing
+        W_r = W.view(n_blk, half_bs)
+        out_r = out.view(n_blk, blocksize)
+
+        # Unpack 4-bit: interleave hi/lo nibbles
+        hi = nf4_tbl[(W_r >> 4).long()]
+        lo = nf4_tbl[(W_r & 0x0F).long()]
+
+        # Interleave: [n_blk, half_bs*2]
+        out_flat_inter = _torch.empty(n_blk, blocksize, dtype=_torch.float32, device=W.device)
+        out_flat_inter[:, 0::2] = hi
+        out_flat_inter[:, 1::2] = lo
+
+        # Scale by per-block absmax
+        scales = out_absmax.view(n_blk, -1).float()[:, :1]
+        out_r.copy_(out_flat_inter * scales)
+
+        if out.dtype != dtype:
+            out.copy_(out.to(dtype))
+
+    _dequant_blockwise_nf4_fp16 = _dequant_blockwise_nf4
+    _dequant_blockwise_nf4_bf16 = _dequant_blockwise_nf4
+
+    _uku.cdequantize_blockwise_fp32 = _dequant_blockwise_fp32
+    _uku.cdequantize_blockwise_fp16_nf4 = _dequant_blockwise_nf4
+    _uku.cdequantize_blockwise_bf16_nf4 = _dequant_blockwise_nf4
+    print("  ✅ unsloth dequantize patched (PyTorch fallback for XPU)")
+
+
 def apply_phase2_patches() -> None:
     """Apply post-unsloth patches. Idempotent."""
     global _PHASE2_APPLIED
@@ -239,5 +340,10 @@ def apply_phase2_patches() -> None:
     _dist.barrier = lambda *a, **k: (
         _orig_barrier(*a, **k) if _dist.is_initialized() else None
     )
+
+    # ── Bug #19: unsloth fast_dequantize calls bitsandbytes C lib ──
+    # bitsandbytes 0.49.2 has no XPU native lib; the mock raises
+    # RuntimeError. Patch to use PyTorch tensor ops instead of raw pointers.
+    _patch_unsloth_dequantize_xpu()
 
     print("✅ Phase 2 patches applied (post-unsloth: third-party compat)")

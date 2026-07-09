@@ -13,13 +13,15 @@ from genechat.common.registry import registry
 from genechat.models.base_model import BaseModel
 from genechat.models.blip2 import Blip2Base
 from genechat.models.genechat import GeneChat
+from genechat.models.genechat_unsloth import GeneChatUnsloth  # noqa: F401
 
 
 __all__ = [
     "load_model",
     "BaseModel",
     "Blip2Base",
-    "GeneChat"
+    "GeneChat",
+    "GeneChatUnsloth",
 ]
 
 
