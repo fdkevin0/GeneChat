@@ -156,8 +156,26 @@ class RunnerIter(RunnerBase):
 
     @main_process
     def _save_checkpoint(self, cur_iters, is_best=False):
+        model_no_ddp = self.unwrap_dist_model(self.model)
+        param_grad_dic = {
+            k: v.requires_grad for (k, v) in model_no_ddp.named_parameters()
+        }
+        state_dict = model_no_ddp.state_dict()
+        # Only save trainable parameters — critical for QLoRA where frozen
+        # 4-bit weights are ~6GB. LoRA adapters + projection layer are ~50MB.
+        # Keep ONLY trainable params; drop everything else (frozen params,
+        # buffers, quantization metadata like absmax/quant_map).
+        trainable_keys = {k for k, v in param_grad_dic.items() if v}
+        total_keys = len(state_dict)
+        for k in list(state_dict.keys()):
+            if k not in trainable_keys:
+                del state_dict[k]
+        logging.info(
+            "Saving %d trainable parameter groups (dropped %d non-trainable + buffers).",
+            len(state_dict), total_keys - len(state_dict),
+        )
         save_obj = {
-            "model": self.unwrap_dist_model(self.model).state_dict(),
+            "model": state_dict,
             "optimizer": self.optimizer.state_dict(),
             "config": self.config.to_dict(),
             "scaler": self.scaler.state_dict() if self.scaler else None,
@@ -185,7 +203,7 @@ class RunnerIter(RunnerBase):
             raise RuntimeError("checkpoint url or path is invalid")
 
         state_dict = checkpoint["model"]
-        self.unwrap_dist_model(self.model).load_state_dict(state_dict)
+        self.unwrap_dist_model(self.model).load_state_dict(state_dict, strict=False)
 
         self.optimizer.load_state_dict(checkpoint["optimizer"])
         if self.scaler and "scaler" in checkpoint:

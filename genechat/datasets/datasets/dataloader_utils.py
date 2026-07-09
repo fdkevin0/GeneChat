@@ -8,7 +8,7 @@
 import time
 import random
 import torch
-from genechat.datasets.data_utils import move_to_cuda
+from genechat.datasets.data_utils import move_to_device
 from torch.utils.data import DataLoader
 
 
@@ -47,13 +47,14 @@ class PrefetchLoader(object):
     """
     Modified from https://github.com/ChenRocks/UNITER.
 
-    overlap compute and cuda data transfer
-    (copied and then modified from nvidia apex)
+    Overlap compute and device data transfer. Uses the centralized device
+    module so it works on CUDA, XPU, or CPU transparently.
     """
 
     def __init__(self, loader):
+        import gcu_device as genechat_device
         self.loader = loader
-        self.stream = torch.cuda.Stream()
+        self.stream = genechat_device.Stream()
 
     def __iter__(self):
         loader_it = iter(self.loader)
@@ -74,35 +75,22 @@ class PrefetchLoader(object):
         return len(self.loader)
 
     def preload(self, it):
+        import gcu_device as genechat_device
         try:
             self.batch = next(it)
         except StopIteration:
             self.batch = None
             return
-        # if record_stream() doesn't work, another option is to make sure
-        # device inputs are created on the main stream.
-        # self.next_input_gpu = torch.empty_like(self.next_input,
-        #                                        device='cuda')
-        # self.next_target_gpu = torch.empty_like(self.next_target,
-        #                                         device='cuda')
-        # Need to make sure the memory allocated for next_* is not still in use
-        # by the main stream at the time we start copying to next_*:
-        # self.stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(self.stream):
-            self.batch = move_to_cuda(self.batch)
-            # more code for the alternative if record_stream() doesn't work:
-            # copy_ will record the use of the pinned source tensor in this
-            # side stream.
-            # self.next_input_gpu.copy_(self.next_input, non_blocking=True)
-            # self.next_target_gpu.copy_(self.next_target, non_blocking=True)
-            # self.next_input = self.next_input_gpu
-            # self.next_target = self.next_target_gpu
+        with genechat_device.using_stream(self.stream):
+            self.batch = move_to_device(self.batch)
 
     def next(self, it):
-        torch.cuda.current_stream().wait_stream(self.stream)
+        import gcu_device as genechat_device
+        cs = genechat_device.current_stream()
+        cs.wait_stream(self.stream)
         batch = self.batch
         if batch is not None:
-            record_cuda_stream(batch)
+            record_device_stream(batch)
         self.preload(it)
         return batch
 
@@ -111,17 +99,22 @@ class PrefetchLoader(object):
         return method
 
 
-def record_cuda_stream(batch):
+def record_device_stream(batch):
+    import gcu_device as genechat_device
     if isinstance(batch, torch.Tensor):
-        batch.record_stream(torch.cuda.current_stream())
+        genechat_device.record_stream(batch)
     elif isinstance(batch, list) or isinstance(batch, tuple):
         for t in batch:
-            record_cuda_stream(t)
+            record_device_stream(t)
     elif isinstance(batch, dict):
         for t in batch.values():
-            record_cuda_stream(t)
+            record_device_stream(t)
     else:
         pass
+
+
+# Backward-compatible alias (other files may still import this name)
+record_cuda_stream = record_device_stream
 
 
 class IterLoader:

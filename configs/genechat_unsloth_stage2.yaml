@@ -1,0 +1,79 @@
+model:
+  arch: genechat_unsloth
+  model_type: pretrain_llama31_8b
+
+  # Gene encoder
+  freeze_gene_encoder: True
+  gene_model: "hyenadna-medium-160k-seqlen"
+  max_gene_length: 160000
+
+  # Adaptor (projection layer)
+  freeze_adaptor: False          # train the projection layer
+
+  # LLM — Unsloth-managed Llama 3.1 8B
+  llama_model: "unsloth/Llama-3.1-8B-bnb-4bit"
+  freeze_llama: False            # apply LoRA fine-tuning
+  load_in_4bit: True             # 4-bit QLoRA for A770 16GB
+  max_seq_length: 2048
+
+  # LoRA hyperparameters (Unsloth best-practice)
+  lora_r: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  lora_target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+
+  prompt: ""
+  max_txt_len: 405
+  end_sym: "###"
+
+  peft_ckpt: ''
+  stage1_ckpt: ''
+
+datasets:
+  seq:
+    data_type: gene
+    build_info:
+      train:
+        storage: ../data_GeneChat/data/train   # 47,275 genes, real data
+
+run:
+  task: protein_text_pretrain
+  runner: runner_iter
+
+  lr_sched: "linear_warmup_cosine_lr"
+  init_lr: 2e-4            # Unsloth recommended LoRA learning rate
+  min_lr: 5e-6
+  warmup_lr: 1e-5
+  accum_grad_iters: 4      # effective batch = bs=1 × accumulate=4 = 4
+
+  weight_decay: 0.01
+  max_epoch: 2
+  max_iters: 1000          # ~1/12 epoch at bs=1, accum=4 on 47,275 genes
+  iters_per_inner_epoch: 200  # checkpoint every 200 iters
+
+  batch_size_train: 1
+  batch_size_eval: 1
+  num_workers: 4
+  warmup_steps: 10
+
+  seed: 3407       # Unsloth default seed
+  output_dir: "unsloth_checkpoints"
+
+  amp: False       # XPU: use bf16 autocast, not CUDA AMP
+  resume_ckpt_path: null
+
+  printable: True
+  evaluate: False
+  train_splits: ["train"]
+
+  device: "xpu"
+  world_size: 1
+  dist_url: "env://"
+  distributed: False

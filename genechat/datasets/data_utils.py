@@ -80,16 +80,25 @@ def apply_to_sample(f, sample):
     return _apply(sample)
 
 
+def move_to_device(sample, device=None):
+    """Move all tensors in sample to device. Device-aware replacement for move_to_cuda."""
+    import gcu_device as genechat_device
+    target = device if device is not None else genechat_device.device()
+
+    def _move_tensor(tensor):
+        return tensor.to(target)
+
+    return apply_to_sample(_move_tensor, sample)
+
+
+# Backward-compatible alias
 def move_to_cuda(sample):
-    def _move_to_cuda(tensor):
-        return tensor.cuda()
-
-    return apply_to_sample(_move_to_cuda, sample)
+    return move_to_device(sample)
 
 
-def prepare_sample(samples, cuda_enabled=True):
+def prepare_sample(samples, cuda_enabled=True, device=None):
     if cuda_enabled:
-        samples = move_to_cuda(samples)
+        samples = move_to_device(samples, device=device)
 
     # TODO fp16 support
 

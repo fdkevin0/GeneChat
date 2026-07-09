@@ -30,15 +30,10 @@ class Blip2Base(BaseModel):
         tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         return tokenizer
 
-    def maybe_autocast(self, dtype=torch.float16):
-        # if on cpu, don't use autocast
-        # if on gpu, use autocast with dtype if provided, otherwise use torch.float16
-        enable_autocast = self.device != torch.device("cpu")
-
-        if enable_autocast:
-            return torch.cuda.amp.autocast(dtype=dtype)
-        else:
-            return contextlib.nullcontext()
+    def maybe_autocast(self, dtype=None):
+        # On CPU, no autocast; on accelerator, use device-appropriate autocast
+        import gcu_device as genechat_device
+        return genechat_device.autocast(dtype=dtype)
 
     def load_from_pretrained(self, url_or_filename):
         if is_url(url_or_filename):

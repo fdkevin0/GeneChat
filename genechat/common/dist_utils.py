@@ -62,7 +62,8 @@ def init_distributed_mode(args):
         args.gpu = int(os.environ["LOCAL_RANK"])
     elif "SLURM_PROCID" in os.environ:
         args.rank = int(os.environ["SLURM_PROCID"])
-        args.gpu = args.rank % torch.cuda.device_count()
+        import gcu_device as genechat_device
+        args.gpu = args.rank % genechat_device.device_count()
     else:
         print("Not using distributed mode")
         args.distributed = False
@@ -70,8 +71,9 @@ def init_distributed_mode(args):
 
     args.distributed = True
 
-    torch.cuda.set_device(args.gpu)
-    args.dist_backend = "nccl"
+    import gcu_device as genechat_device
+    genechat_device.set_device(args.gpu)
+    args.dist_backend = genechat_device.dist_backend()
     print(
         "| distributed init (rank {}, world {}): {}".format(
             args.rank, args.world_size, args.dist_url
@@ -89,7 +91,8 @@ def init_distributed_mode(args):
         ),  # allow auto-downloading and de-compressing
     )
 
-    torch.distributed.barrier(device_ids=[torch.cuda.current_device()])
+    import gcu_device as genechat_device
+    genechat_device.barrier()
     
     if not args.printable:
         setup_for_distributed(args.rank == 0)

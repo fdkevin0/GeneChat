@@ -40,7 +40,10 @@ class SmoothedValue(object):
         """
         if not dist_utils.is_dist_avail_and_initialized():
             return
-        t = torch.tensor([self.count, self.total], dtype=torch.float64, device="cuda")
+        import gcu_device as genechat_device
+        t = torch.tensor(
+            [self.count, self.total], dtype=torch.float64,
+            device=genechat_device.device())
         dist.barrier()
         dist.all_reduce(t)
         t = t.tolist()
@@ -136,7 +139,8 @@ class MetricLogger(object):
             "time: {time}",
             "data: {data}",
         ]
-        if torch.cuda.is_available():
+        import gcu_device as genechat_device
+        if genechat_device.is_available():
             log_msg.append("max mem: {memory:.0f}")
         log_msg = self.delimiter.join(log_msg)
         MB = 1024.0 * 1024.0
@@ -147,7 +151,7 @@ class MetricLogger(object):
             if i % print_freq == 0 or i == len(iterable) - 1:
                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
-                if torch.cuda.is_available():
+                if genechat_device.is_available():
                     print(
                         log_msg.format(
                             i,
@@ -156,7 +160,7 @@ class MetricLogger(object):
                             meters=str(self),
                             time=str(iter_time),
                             data=str(data_time),
-                            memory=torch.cuda.max_memory_allocated() / MB,
+                            memory=genechat_device.max_memory_allocated() / MB,
                         )
                     )
                 else:

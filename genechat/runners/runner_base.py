@@ -138,7 +138,8 @@ class RunnerBase:
 
         if amp:
             if self._scaler is None:
-                self._scaler = torch.cuda.amp.GradScaler()
+                import gcu_device as genechat_device
+                self._scaler = genechat_device.GradScaler()
 
         return self._scaler
 
@@ -315,7 +316,8 @@ class RunnerBase:
 
     @property
     def cuda_enabled(self):
-        return self.device.type == "cuda"
+        """True when an accelerator (CUDA or XPU) is available."""
+        return self.device.type != "cpu"
 
     @property
     def max_epoch(self):
