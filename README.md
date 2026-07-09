@@ -49,6 +49,29 @@ Then, set the path to the vicuna weight in the config file
 [configs/genechat_stage1.yaml](configs/genechat_stage1.yaml#L15).
 
 
+### Dependency management (Intel XPU fork, `uv`)
+
+This fork replaces the conda/CUDA setup above with [`uv`](https://docs.astral.sh/uv/) for Intel Arc XPU training, driven by `pyproject.toml`. Standard flow:
+
+```bash
+uv sync                    # install/update the environment from pyproject.toml
+uv run python train_unsloth.py --cfg-path configs/genechat_unsloth_stage2.yaml
+```
+
+**Only declare what you actually import or need version control over.** `pyproject.toml`'s `dependencies` list is limited to packages this repo's code imports directly (`torch`, `transformers`, `torchvision`, `peft`, `einops`, `numpy`, `wandb`, `timm`, …) plus the XPU-critical training stack (`unsloth`, `unsloth-zoo`, `triton-xpu`, `pytorch-triton-xpu`, `torchao`). Everything else `unsloth`/`accelerate`/`transformers` need transitively (`bitsandbytes`, `datasets`, `sentencepiece`, `tokenizers`, `huggingface-hub`, `safetensors`, `pillow`, `trl`, `diffusers`, `cut-cross-entropy`, …) is deliberately left unpinned — maintaining our own version opinion on packages `unsloth` already controls is what caused a real `transformers`/`torch` resolution conflict during a `uv sync --upgrade` (see `[tool.uv] override-dependencies` in `pyproject.toml`). Checked with `uv tree --invert --package <name>` before removing anything.
+
+**Two known XPU/uv gotchas, both documented as comments in `pyproject.toml`:**
+
+1. **Resolver scope.** Without `[tool.uv] environments = ["sys_platform == 'linux'"]` and a bounded `requires-python`, `uv sync` tries to resolve a lockfile valid for every Python version/platform (e.g. win32 + Python 3.14), and fails there even though the actual target is Linux-only.
+2. **Triton file collision.** `triton` (plain, pulled in transitively by `unsloth`/`unsloth-zoo`/`cut-cross-entropy`), `triton-xpu`, and `pytorch-triton-xpu` all install to the same path (`triton/_C/libtriton.so`). Whichever installs *last* wins the file-overwrite race, and a fresh `uv sync --upgrade` reliably lets plain `triton` win, breaking `import unsloth` with `ImportError: cannot import name 'intel' from 'triton._C.libtriton'`. Fix after any resolution that touches triton packages:
+   ```bash
+   uv sync --reinstall-package triton-xpu --reinstall-package pytorch-triton-xpu
+   ```
+
+Referenced when diagnosing both of these:
+- vLLM's Intel XPU install guide — [`docs/getting_started/installation/gpu.xpu.inc.md`](https://github.com/vllm-project/vllm/raw/refs/heads/main/docs/getting_started/installation/gpu.xpu.inc.md) — documents the same plain-`triton`-vs-`triton-xpu` collision and the force-reinstall-last fix this project adopted.
+- Unsloth's Intel GPU install guide — [unsloth.ai/docs/get-started/install/intel](https://unsloth.ai/docs/get-started/install/intel.md) — shows unsloth's own official install path pins exact wheel URLs (bypassing the resolver conflict entirely, at the cost of an older torch version); this project instead keeps our own newer torch/transformers via `override-dependencies` since the pinned versions are already verified working here.
+
 ### Training
 **You need at least 70 GB GPU memory for the training.** 
 

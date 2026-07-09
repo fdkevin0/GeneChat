@@ -15,6 +15,7 @@ import torch.nn as nn
 import torch.distributed as dist
 import torch.nn.functional as F
 
+import gcu_device as genechat_device
 import genechat.common.dist_utils as dist_utils
 from genechat.common.dist_utils import download_cached_file
 from genechat.common.utils import is_url
@@ -32,7 +33,6 @@ class Blip2Base(BaseModel):
 
     def maybe_autocast(self, dtype=None):
         # On CPU, no autocast; on accelerator, use device-appropriate autocast
-        import gcu_device as genechat_device
         return genechat_device.autocast(dtype=dtype)
 
     def load_from_pretrained(self, url_or_filename):

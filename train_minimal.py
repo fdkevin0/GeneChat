@@ -6,23 +6,19 @@ from __future__ import annotations
 import os, sys, gc
 
 # ═══════════════════════════════════════════════════════════════════════
-# Phase 0-1: XPU patches + DNABERT-2 pre-load (same as train_unsloth.py)
+# Phase 1: XPU patches + DNABERT-2 pre-load (consolidated — see gcu_xpu.py)
 # ═══════════════════════════════════════════════════════════════════════
-os.environ["TORCH_COMPILE_DISABLE"] = "1"
 import torch
-import torch._dynamo; torch._dynamo.config.suppress_errors = True
-
-if torch.xpu.is_available():
-    import torch.utils._triton as _tr; _tr.is_device_compatible_with_triton = lambda: False
-    if not hasattr(torch._C, "_cuda_getCurrentRawStream"):
-        torch._C._cuda_getCurrentRawStream = lambda index=None: None
-
-import transformers.modeling_utils as _mu
-_mu.caching_allocator_warmup = lambda *a, **k: None
+from gcu_xpu import (
+    apply_phase1_patches,
+    apply_phase2_patches,
+    patch_dnabert2_alibi,
+    patch_dnabert2_flash_attn,
+)
+apply_phase1_patches()
 
 # Auto-patch + pre-load DNABERT-2
 from transformers import AutoConfig, AutoModel, AutoTokenizer
-import glob as _glob
 
 _gene_config = AutoConfig.from_pretrained(
     "zhihan1996/DNABERT-2-117M", trust_remote_code=True)
@@ -30,33 +26,13 @@ if not hasattr(_gene_config, "pad_token_id"): _gene_config.pad_token_id = 0
 # Disable flash attention — only works on CUDA, not XPU
 _gene_config._attn_implementation = "eager"
 
-_dnabert2_cache = os.path.expanduser(
-    "~/.cache/huggingface/modules/transformers_modules/"
-    "zhihan1996/DNABERT_hyphen_2_hyphen_117M"
-)
 try:
     _gene_encoder = AutoModel.from_pretrained(
         "zhihan1996/DNABERT-2-117M", config=_gene_config, trust_remote_code=True)
 except RuntimeError: pass
 
-_dnabert2_files = _glob.glob(f"{_dnabert2_cache}/*/bert_layers.py")
-if _dnabert2_files:
-    with open(_dnabert2_files[0]) as f: _content = f.read()
-    patched = False
-    # Fix 1: ALiBi device=None → cpu
-    if "if device is None:\n            device = torch.device" not in _content:
-        _old_a = "):\n        # Alibi\n        # Following https://github.com/ofirpress/attention_with_linear_biases/issues/5"
-        _new_a = "):\n        # Alibi\n        if device is None:\n            device = torch.device(\"cpu\")\n        # Following https://github.com/ofirpress/attention_with_linear_biases/issues/5"
-        if _old_a in _content:
-            _content = _content.replace(_old_a, _new_a); patched = True
-    # Fix 2: disable flash_attn on XPU (checks q.is_cuda)
-    _old_f = "    from .flash_attn_triton import flash_attn_qkvpacked_func\n"
-    _new_f = "    flash_attn_qkvpacked_func = None  # disabled for XPU\n"
-    if _old_f in _content:
-        _content = _content.replace(_old_f, _new_f); patched = True
-    if patched:
-        with open(_dnabert2_files[0], "w") as f: f.write(_content)
-        print("✅ DNABERT-2 patched (device=None + flash_attn disabled)")
+patch_dnabert2_alibi()
+patch_dnabert2_flash_attn()
 
 _gene_encoder = AutoModel.from_pretrained(
     "zhihan1996/DNABERT-2-117M", config=_gene_config, trust_remote_code=True)
@@ -79,38 +55,25 @@ from genechat.models import *
 from genechat.runners import *
 from genechat.tasks import *
 
-# Phase 2 patches
+# Phase 2 patches (consolidated — see gcu_xpu.py), plus extras this script
+# needs that aren't part of the shared set (autocast/GradScaler mocks,
+# memory-stat stubs — runner_iter/base_task don't need these, but the
+# raw optimizer loop below does).
+apply_phase2_patches()
 if torch.xpu.is_available():
-    class _P: major=8; minor=0; multi_processor_count=64; total_memory=16*1024**3
-    torch.cuda.get_device_properties = lambda d=None: _P
-    torch.cuda.get_device_capability = lambda d=None: (8, 0)
-    import torch.cuda.memory as _cm; _cm.mem_get_info = lambda d=0: (0, 16*1024**3)
-    torch.cuda.is_available = lambda: True
-    torch.cuda.current_device = torch.xpu.current_device
-    torch.cuda.device_count = torch.xpu.device_count
-    for n in ("set_device","current_stream","synchronize"):
-        if hasattr(torch.xpu,n): setattr(torch.cuda,n,getattr(torch.xpu,n))
-    class _S:
-        def wait_stream(self,*a,**k): pass
-        def record_stream(self,*a,**k): pass
-        def __enter__(self): return self
-        def __exit__(self,*a): pass
-    if not hasattr(torch.cuda,"Stream"): torch.cuda.Stream = _S
-    torch.cuda.amp.autocast = lambda dtype=torch.bfloat16,enabled=True: torch.autocast(device_type="xpu",dtype=dtype,enabled=enabled)
+    torch.cuda.amp.autocast = lambda dtype=torch.bfloat16, enabled=True: torch.autocast(
+        device_type="xpu", dtype=dtype, enabled=enabled)
+
     class _N:
-        def scale(self,l): return l
-        def step(self,o): o.step()
+        def scale(self, l): return l
+        def step(self, o): o.step()
         def update(self): pass
         def get_scale(self): return 1.0
         def state_dict(self): return {}
-        def load_state_dict(self,s): pass
+        def load_state_dict(self, s): pass
     torch.cuda.amp.GradScaler = _N
-    torch.cuda.max_memory_allocated = lambda *a,**k: 0
-    torch.cuda.memory_stats = lambda *a,**k: {}
-    torch.Tensor.record_stream = lambda self,s: None
-    # XPU optimizer step — patch the captured reference in graphs module
-    import torch.cuda.graphs as _graphs
-    _graphs._cuda_isCurrentStreamCapturing = lambda: False
+    torch.cuda.max_memory_allocated = lambda *a, **k: 0
+    torch.cuda.memory_stats = lambda *a, **k: {}
 
 # ═══════════════════════════════════════════════════════════════════════
 # Training

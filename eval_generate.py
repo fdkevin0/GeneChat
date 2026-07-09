@@ -16,35 +16,21 @@ import sys
 import time
 
 # ═══════════════════════════════════════════════════════════════════════
-# PHASE 0-1: Same patches as train_unsloth.py
+# PHASE 1: Pre-unsloth patches (consolidated — see gcu_xpu.py)
 # ═══════════════════════════════════════════════════════════════════════
-os.environ["TORCH_COMPILE_DISABLE"] = "1"
-
 import torch
-import torch._dynamo
-torch._dynamo.config.suppress_errors = True
-try:
-    torch._dynamo.disable()
-except Exception:
-    pass
+from gcu_xpu import (
+    apply_phase1_patches,
+    apply_phase2_patches,
+    patch_dnabert2_alibi,
+    patch_dnabert2_flash_attn,
+)
+apply_phase1_patches()
 
-if torch.xpu.is_available():
-    import torch.utils._triton as _triton
-    _triton.is_device_compatible_with_triton = lambda: False
-    if not hasattr(torch._C, "_cuda_getCurrentRawStream"):
-        torch._C._cuda_getCurrentRawStream = lambda index=None: None
-    # Bug #17: mem_get_info mock
-    import torch.xpu.memory as _xpu_mem
-    _mem_get_info_mock = lambda device=0: (4 * 1024**3, 16 * 1024**3)
-    _xpu_mem.mem_get_info = _mem_get_info_mock
-    torch.xpu.mem_get_info = _mem_get_info_mock
-
-import transformers.modeling_utils as _mu
-_mu.caching_allocator_warmup = lambda *a, **k: None
-
-# Pre-load DNABERT-2
+# ═══════════════════════════════════════════════════════════════════════
+# Pre-load DNABERT-2 BEFORE unsloth (avoids meta-device crash)
+# ═══════════════════════════════════════════════════════════════════════
 from transformers import AutoConfig, AutoModel, AutoTokenizer
-import glob as _glob
 
 _gene_config = AutoConfig.from_pretrained(
     "zhihan1996/DNABERT-2-117M", trust_remote_code=True)
@@ -52,34 +38,14 @@ if not hasattr(_gene_config, "pad_token_id"):
     _gene_config.pad_token_id = 0
 _gene_config._attn_implementation = "eager"
 
-_dnabert2_cache = os.path.expanduser(
-    "~/.cache/huggingface/modules/transformers_modules/"
-    "zhihan1996/DNABERT_hyphen_2_hyphen_117M"
-)
 try:
     _gene_encoder = AutoModel.from_pretrained(
         "zhihan1996/DNABERT-2-117M", config=_gene_config, trust_remote_code=True)
 except RuntimeError:
-    pass
+    pass  # Expected crash on first download — code is now cached
 
-# Patch bert_layers.py
-_dnabert2_files = _glob.glob(f"{_dnabert2_cache}/*/bert_layers.py")
-if _dnabert2_files:
-    with open(_dnabert2_files[0]) as _f:
-        _content = _f.read()
-    if "if device is None:\n            device = torch.device" not in _content:
-        _old = (
-            "):\n        # Alibi\n"
-            "        # Following https://github.com/ofirpress/attention_with_linear_biases/issues/5"
-        )
-        _new = (
-            "):\n        # Alibi\n        if device is None:\n            device = torch.device(\"cpu\")\n"
-            "        # Following https://github.com/ofirpress/attention_with_linear_biases/issues/5"
-        )
-        if _old in _content:
-            _content = _content.replace(_old, _new)
-            with open(_dnabert2_files[0], "w") as _f:
-                _f.write(_content)
+patch_dnabert2_alibi()
+patch_dnabert2_flash_attn()
 
 _gene_encoder = AutoModel.from_pretrained(
     "zhihan1996/DNABERT-2-117M", config=_gene_config, trust_remote_code=True)
@@ -90,9 +56,14 @@ import genechat.models.genechat_unsloth as _gcu
 _gcu._PRELOADED_GENE_ENCODER = _gene_encoder
 _gcu._PRELOADED_GENE_TOKENIZER = _gene_tokenizer
 
-# Import model (triggers Phase 2 patches in genechat_unsloth)
+# Import model (triggers unsloth import → genechat_unsloth applies its own patches)
 from genechat.models.genechat_unsloth import GeneChatUnsloth
 from transformers import LlamaTokenizer
+
+# ═══════════════════════════════════════════════════════════════════════
+# PHASE 2: Post-unsloth patches (consolidated)
+# ═══════════════════════════════════════════════════════════════════════
+apply_phase2_patches()
 
 
 def load_model(checkpoint_path: str) -> GeneChatUnsloth:
@@ -126,69 +97,21 @@ def load_model(checkpoint_path: str) -> GeneChatUnsloth:
     return model
 
 
-def encode_gene(model, seq: str) -> tuple[torch.Tensor, torch.Tensor]:
-    """Encode a single DNA sequence into gene embeddings."""
-    device = model._target_device
-    gene_embeds = []
-    for i in range(0, len(seq), 512):
-        chunk = seq[max(0, min(i, i - 10)):i + 512]
-        input_token = model.gene_tokenizer(chunk, return_tensors="pt")["input_ids"]
-        input_token = input_token.to(device)
-        hidden_states = model.gene_encoder(input_token)[0]
-        embedding_mean = torch.mean(hidden_states, dim=1)
-        gene_embeds.append(embedding_mean)
-
-    gene_embeds = torch.stack(gene_embeds, axis=1)
-
-    if gene_embeds.dtype != model.hyena_llama_proj.weight.dtype:
-        gene_embeds = gene_embeds.to(model.hyena_llama_proj.weight.dtype)
-
-    inputs_llama = model.hyena_llama_proj(
-        gene_embeds.squeeze(dim=2)
-    ).to(device=device, dtype=torch.bfloat16)
-
-    atts_llama = torch.ones(
-        inputs_llama.size()[:-1], dtype=torch.long, device=device
-    )
-    return inputs_llama, atts_llama
-
-
 def generate(model, gene_seq: str, prompt: str, max_new_tokens: int = 256) -> str:
-    """Generate a gene function description."""
+    """Generate a gene function description.
+
+    Reuses the model's own encode_gene/prompt_list_wrap (same code path as
+    training) instead of re-deriving the embedding assembly here.
+    """
     device = model._target_device
 
-    # Encode gene
-    gene_embeds, gene_atts = encode_gene(model, gene_seq)
+    gene_embeds, gene_atts = model.encode_gene([gene_seq])
+    wrapped_embeds, wrapped_atts = model.prompt_list_wrap(gene_embeds, gene_atts, [prompt])
 
-    # Split prompt at <geneHere>
-    if "<geneHere>" in prompt:
-        p_before, p_after = prompt.split("<geneHere>", 1)
-    else:
-        p_before, p_after = prompt, ""
-
-    # Tokenize prompt parts
-    p_before_tokens = model.llama_tokenizer(
-        p_before, return_tensors="pt", add_special_tokens=False,
-    ).to(device)
-    p_before_embeds = model.llama_model.get_input_embeddings()(
-        p_before_tokens.input_ids
-    )
-
-    p_after_tokens = model.llama_tokenizer(
-        p_after, return_tensors="pt", add_special_tokens=True, padding=True,
-    ).to(device)
-    p_after_embeds = model.llama_model.get_input_embeddings()(
-        p_after_tokens.input_ids
-    )
-
-    # BOS embedding
     bos = torch.ones([1, 1], dtype=torch.long, device=device) * model.llama_tokenizer.bos_token_id
     bos_embeds = model.llama_model.get_input_embeddings()(bos)
 
-    # Concatenate: bos + prompt_before + gene + prompt_after
-    inputs_embeds = torch.cat(
-        [bos_embeds, p_before_embeds, gene_embeds, p_after_embeds], dim=1
-    )
+    inputs_embeds = torch.cat([bos_embeds, wrapped_embeds], dim=1)
     inputs_embeds = inputs_embeds.to(dtype=torch.bfloat16)
 
     with torch.no_grad():

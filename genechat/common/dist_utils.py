@@ -13,6 +13,8 @@ import torch
 import torch.distributed as dist
 import timm.models.hub as timm_hub
 
+import gcu_device as genechat_device
+
 
 def setup_for_distributed(is_master):
     """
@@ -62,7 +64,6 @@ def init_distributed_mode(args):
         args.gpu = int(os.environ["LOCAL_RANK"])
     elif "SLURM_PROCID" in os.environ:
         args.rank = int(os.environ["SLURM_PROCID"])
-        import gcu_device as genechat_device
         args.gpu = args.rank % genechat_device.device_count()
     else:
         print("Not using distributed mode")
@@ -71,7 +72,6 @@ def init_distributed_mode(args):
 
     args.distributed = True
 
-    import gcu_device as genechat_device
     genechat_device.set_device(args.gpu)
     args.dist_backend = genechat_device.dist_backend()
     print(
@@ -91,7 +91,6 @@ def init_distributed_mode(args):
         ),  # allow auto-downloading and de-compressing
     )
 
-    import gcu_device as genechat_device
     genechat_device.barrier()
     
     if not args.printable:

@@ -13,17 +13,12 @@ Usage:
 from __future__ import annotations
 
 import torch
-import torch.utils._triton as _triton
-_triton.is_device_compatible_with_triton = lambda: False
-# Safety net for bitsandbytes CUDA attribute access during import chain
-if not hasattr(torch._C, "_cuda_getCurrentRawStream"):
-    torch._C._cuda_getCurrentRawStream = lambda index=None: None
-import transformers.modeling_utils as _mu
-_mu.caching_allocator_warmup = lambda *a, **k: None
+from gcu_xpu import apply_phase1_patches, apply_phase2_patches
 
 # NOTE: DO NOT set torch.cuda.is_available = True here!
 # unsloth must detect XPU natively via torch.xpu.is_available().
 # Phase 2 patches (cuda → xpu redirect) are applied in main() AFTER imports.
+apply_phase1_patches()
 
 
 def test_imports():
@@ -170,36 +165,24 @@ if __name__ == "__main__":
     test_config()
     test_model_class_structure()
 
-    # NOW apply Phase 2 patches (cuda → xpu for training infra)
+    # NOW apply Phase 2 patches (cuda → xpu for training infra), plus the
+    # autocast/GradScaler/memory-stat extras this dry-run needs that aren't
+    # part of the shared set.
+    apply_phase2_patches()
     if torch.xpu.is_available():
-        class _MockProps: major=8; minor=0; multi_processor_count=64; total_memory=16*1024**3
-        torch.cuda.get_device_properties = lambda d=None: _MockProps
-        torch.cuda.get_device_capability = lambda d=None: (8, 0)
-        import torch.cuda.memory as _cm; _cm.mem_get_info = lambda d=0: (0, 16*1024**3)
-        torch.cuda.is_available = lambda: True
-        torch.cuda.current_device = torch.xpu.current_device
-        torch.cuda.device_count = torch.xpu.device_count
-        for n in ("set_device","current_stream","synchronize"):
-            if hasattr(torch.xpu,n): setattr(torch.cuda,n,getattr(torch.xpu,n))
-        if not hasattr(torch.cuda,"Stream"):
-            class _S:
-                def wait_stream(self,*a,**k): pass
-                def record_stream(self,*a,**k): pass
-                def __enter__(self): return self
-                def __exit__(self,*a): pass
-            torch.cuda.Stream = _S
-        torch.cuda.amp.autocast = lambda dtype=torch.bfloat16,enabled=True: torch.autocast(device_type="xpu",dtype=dtype,enabled=enabled)
+        torch.cuda.amp.autocast = lambda dtype=torch.bfloat16, enabled=True: torch.autocast(
+            device_type="xpu", dtype=dtype, enabled=enabled)
+
         class _NoOp:
-            def scale(self,l): return l
-            def step(self,o): o.step()
+            def scale(self, l): return l
+            def step(self, o): o.step()
             def update(self): pass
             def get_scale(self): return 1.0
             def state_dict(self): return {}
-            def load_state_dict(self,s): pass
+            def load_state_dict(self, s): pass
         torch.cuda.amp.GradScaler = _NoOp
-        torch.cuda.max_memory_allocated = lambda *a,**k: 0
-        torch.cuda.memory_stats = lambda *a,**k: {}
-        torch.Tensor.record_stream = lambda self,stream: None
+        torch.cuda.max_memory_allocated = lambda *a, **k: 0
+        torch.cuda.memory_stats = lambda *a, **k: {}
 
     # Tests that NEED torch.cuda → xpu redirect:
     test_dnabert2_load()

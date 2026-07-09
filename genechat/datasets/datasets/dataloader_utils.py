@@ -8,6 +8,8 @@
 import time
 import random
 import torch
+
+import gcu_device as genechat_device
 from genechat.datasets.data_utils import move_to_device
 from torch.utils.data import DataLoader
 
@@ -52,7 +54,6 @@ class PrefetchLoader(object):
     """
 
     def __init__(self, loader):
-        import gcu_device as genechat_device
         self.loader = loader
         self.stream = genechat_device.Stream()
 
@@ -75,7 +76,6 @@ class PrefetchLoader(object):
         return len(self.loader)
 
     def preload(self, it):
-        import gcu_device as genechat_device
         try:
             self.batch = next(it)
         except StopIteration:
@@ -85,7 +85,6 @@ class PrefetchLoader(object):
             self.batch = move_to_device(self.batch)
 
     def next(self, it):
-        import gcu_device as genechat_device
         cs = genechat_device.current_stream()
         cs.wait_stream(self.stream)
         batch = self.batch
@@ -100,7 +99,6 @@ class PrefetchLoader(object):
 
 
 def record_device_stream(batch):
-    import gcu_device as genechat_device
     if isinstance(batch, torch.Tensor):
         genechat_device.record_stream(batch)
     elif isinstance(batch, list) or isinstance(batch, tuple):

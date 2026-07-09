@@ -60,64 +60,61 @@ def is_available() -> bool:
     return _DEVICE_TYPE != "cpu"
 
 
+def _backend():
+    """Return the torch.xpu / torch.cuda module for the resolved device
+    type, or None on CPU. xpu and cuda modules share method names for
+    everything device_count/current_device/... below, so callers just
+    dispatch to whichever module matches."""
+    if _DEVICE_TYPE == "xpu":
+        return torch.xpu
+    if _DEVICE_TYPE == "cuda":
+        return torch.cuda
+    return None
+
+
 def device_count() -> int:
     """Number of accelerator devices available."""
-    if _DEVICE_TYPE == "xpu":
-        return torch.xpu.device_count()
-    if _DEVICE_TYPE == "cuda":
-        return torch.cuda.device_count()
-    return 0
+    backend = _backend()
+    return backend.device_count() if backend else 0
 
 
 def current_device() -> int:
     """Index of the current accelerator device."""
-    if _DEVICE_TYPE == "xpu":
-        return torch.xpu.current_device()
-    if _DEVICE_TYPE == "cuda":
-        return torch.cuda.current_device()
-    return 0
+    backend = _backend()
+    return backend.current_device() if backend else 0
 
 
 def set_device(dev: int) -> None:
     """Set the current accelerator device."""
-    if _DEVICE_TYPE == "xpu":
-        torch.xpu.set_device(dev)
-    elif _DEVICE_TYPE == "cuda":
-        torch.cuda.set_device(dev)
+    backend = _backend()
+    if backend:
+        backend.set_device(dev)
 
 
 def synchronize(dev: int | None = None) -> None:
     """Synchronize the current or specified accelerator device."""
-    if _DEVICE_TYPE == "xpu":
-        torch.xpu.synchronize(dev)
-    elif _DEVICE_TYPE == "cuda":
-        torch.cuda.synchronize(dev)
+    backend = _backend()
+    if backend:
+        backend.synchronize(dev)
 
 
 def reset_peak_memory_stats(dev: int | None = None) -> None:
     """Reset peak memory statistics."""
-    if _DEVICE_TYPE == "xpu":
-        torch.xpu.reset_peak_memory_stats(dev)
-    elif _DEVICE_TYPE == "cuda":
-        torch.cuda.reset_peak_memory_stats(dev)
+    backend = _backend()
+    if backend:
+        backend.reset_peak_memory_stats(dev)
 
 
 def max_memory_allocated(dev: int | None = None) -> int:
     """Peak memory allocated in bytes since last reset."""
-    if _DEVICE_TYPE == "xpu":
-        return torch.xpu.max_memory_allocated(dev)
-    if _DEVICE_TYPE == "cuda":
-        return torch.cuda.max_memory_allocated(dev)
-    return 0
+    backend = _backend()
+    return backend.max_memory_allocated(dev) if backend else 0
 
 
 def memory_stats(dev: int | None = None) -> dict[str, Any]:
     """Return memory statistics dict."""
-    if _DEVICE_TYPE == "xpu":
-        return torch.xpu.memory_stats(dev)
-    if _DEVICE_TYPE == "cuda":
-        return torch.cuda.memory_stats(dev)
-    return {}
+    backend = _backend()
+    return backend.memory_stats(dev) if backend else {}
 
 
 def dist_backend() -> str:
@@ -132,11 +129,10 @@ def dist_backend() -> str:
 def get_device_properties(dev: int | None = None):
     """Return device properties object (for compatibility with code that
     inspects compute capability, multiprocessor count, etc.)."""
-    if _DEVICE_TYPE == "xpu":
-        return torch.xpu.get_device_properties(dev)
-    if _DEVICE_TYPE == "cuda":
-        return torch.cuda.get_device_properties(dev)
-    raise RuntimeError("No accelerator available")
+    backend = _backend()
+    if backend is None:
+        raise RuntimeError("No accelerator available")
+    return backend.get_device_properties(dev)
 
 
 # ═══════════════════════════════════════════════════════════════════════

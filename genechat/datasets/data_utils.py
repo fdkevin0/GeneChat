@@ -22,6 +22,7 @@ import numpy as np
 import torch
 from torch.utils.data.dataset import IterableDataset
 
+import gcu_device as genechat_device
 from genechat.common.registry import registry
 from genechat.datasets.datasets.base_dataset import ConcatDataset
 
@@ -81,19 +82,13 @@ def apply_to_sample(f, sample):
 
 
 def move_to_device(sample, device=None):
-    """Move all tensors in sample to device. Device-aware replacement for move_to_cuda."""
-    import gcu_device as genechat_device
+    """Move all tensors in sample to device."""
     target = device if device is not None else genechat_device.device()
 
     def _move_tensor(tensor):
         return tensor.to(target)
 
     return apply_to_sample(_move_tensor, sample)
-
-
-# Backward-compatible alias
-def move_to_cuda(sample):
-    return move_to_device(sample)
 
 
 def prepare_sample(samples, cuda_enabled=True, device=None):

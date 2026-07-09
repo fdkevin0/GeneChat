@@ -13,6 +13,7 @@ from collections import defaultdict, deque
 import torch
 import torch.distributed as dist
 
+import gcu_device as genechat_device
 from genechat.common import dist_utils
 
 
@@ -40,7 +41,6 @@ class SmoothedValue(object):
         """
         if not dist_utils.is_dist_avail_and_initialized():
             return
-        import gcu_device as genechat_device
         t = torch.tensor(
             [self.count, self.total], dtype=torch.float64,
             device=genechat_device.device())
@@ -139,7 +139,6 @@ class MetricLogger(object):
             "time: {time}",
             "data: {data}",
         ]
-        import gcu_device as genechat_device
         if genechat_device.is_available():
             log_msg.append("max mem: {memory:.0f}")
         log_msg = self.delimiter.join(log_msg)

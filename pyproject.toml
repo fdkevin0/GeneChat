@@ -2,41 +2,43 @@
 name = "genechat"
 version = "0.1.0"
 description = "GeneChat: DNA sequence → LLM multimodal model"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     # ============================================================
     # Core ML Framework (XPU build — pinned to Intel index)
     # ============================================================
     "torch>=2.13.0",
     "transformers>=5.13.0",
+    "torchvision>=0.28.0",
     "peft>=0.19.0",
-    "accelerate>=1.14.0",
-    "bitsandbytes>=0.49.0",
-    "datasets>=4.3.0",
 
     # ============================================================
     # Unsloth + Triton (XPU-aware QLoRA training)
     # ============================================================
+    # Only unsloth/unsloth-zoo/triton-xpu/pytorch-triton-xpu/torchao are
+    # declared explicitly. accelerate, bitsandbytes, datasets, sentencepiece,
+    # tokenizers, huggingface-hub, safetensors, pillow, trl, diffusers,
+    # cut-cross-entropy are all required transitively by this stack
+    # (verified via `uv tree --invert`) and are deliberately left unpinned
+    # here — maintaining our own version opinion on packages unsloth already
+    # controls is exactly what caused the transformers/torch resolution
+    # conflict this project hit (see override-dependencies below and
+    # [[pyproject-dependencies]] memory for the full story). torchao stays
+    # explicit despite being transitive-only, because [tool.uv.sources]
+    # XPU-index routing only applies to a project's *direct* dependencies —
+    # dropping it here silently downgraded it to the plain (non-XPU) build.
     "unsloth>=2026.6",
     "unsloth-zoo>=2026.7",
     "triton-xpu>=3.7.0",
     "pytorch-triton-xpu>=3.3.0",
+    "torchao>=0.17.0",
 
     # ============================================================
     # Domain: Genomics, Proteins, NLP
     # ============================================================
     "einops>=0.8.0",
     "fair-esm>=2.0.0",
-    "sentence-transformers>=5.6.0",
-    "sentencepiece>=0.2.0",
-    "tokenizers>=0.22.0",
     "nltk>=3.10.0",
-
-    # ============================================================
-    # HuggingFace ecosystem
-    # ============================================================
-    "huggingface-hub>=1.22.0",
-    "safetensors>=0.8.0",
 
     # ============================================================
     # Config & CLI
@@ -58,8 +60,7 @@ dependencies = [
     # ============================================================
     "iopath>=0.1.10",
     "decord>=0.6.0",
-    "pycocotools>=2.0.0",
-    "pillow>=12.0.0",
+    "timm>=1.0.0",
 
     # ============================================================
     # Visualization & Logging
@@ -71,19 +72,6 @@ dependencies = [
     # Utilities
     # ============================================================
     "tqdm>=4.68.0",
-]
-
-[project.optional-dependencies]
-# Extra packages pulled in by unsloth/training — list explicitly
-# so uv knows they should come from the XPU index
-xpu-extras = [
-    "torchaudio>=2.11.0",
-    "torchvision>=0.28.0",
-    "torchao>=0.17.0",
-    "trl>=0.24.0",
-    "diffusers>=0.39.0",
-    "timm>=1.0.0",
-    "cut-cross-entropy>=25.1.0",
 ]
 
 [build-system]
@@ -99,11 +87,29 @@ include = ["genechat*"]
 # Intel Arc GPU requires PyTorch distributed via
 #   https://download.pytorch.org/whl/xpu
 # The packages below MUST resolve from this index rather than
-# the default PyPI, which only carries CUDA builds.
+# the default PyPI, which only carries CUDA builds. This routing
+# applies to a package whether it's declared here directly or only
+# pulled in transitively (e.g. torchao via unsloth-zoo).
+
+[tool.uv]
+# Intel Arc GPUs only run on Linux; restrict resolution so uv doesn't try
+# (and fail) to solve for win32/macOS/other-Python-version combinations
+# that this project will never actually run on.
+environments = ["sys_platform == 'linux'"]
+
+# unsloth's published PyPI metadata caps torch<2.11 / transformers<=5.5.0 —
+# it doesn't officially claim support for the newer XPU-side stack this
+# project depends on. gcu_xpu.py's patch layer (Bug #19 etc.) exists
+# precisely because we run unsloth against versions ahead of what it
+# declares. This override tells uv's resolver to trust our pins over
+# unsloth's, instead of relying on install order to dodge the conflict.
+override-dependencies = [
+    "torch>=2.13.0",
+    "transformers>=5.13.0",
+]
 
 [tool.uv.sources]
 torch         = { index = "pytorch-xpu" }
-torchaudio    = { index = "pytorch-xpu" }
 torchvision   = { index = "pytorch-xpu" }
 triton-xpu    = { index = "pytorch-xpu" }
 pytorch-triton-xpu = { index = "pytorch-xpu" }
@@ -113,3 +119,24 @@ torchao       = { index = "pytorch-xpu" }
 name = "pytorch-xpu"
 url = "https://download.pytorch.org/whl/xpu"
 explicit = true
+
+# ============================================================
+# REQUIRED post-sync step: triton file collision
+# ============================================================
+# `triton` (plain, pulled transitively by unsloth/unsloth-zoo/
+# cut-cross-entropy), `triton-xpu`, and `pytorch-triton-xpu` all install
+# files at the same path (triton/_C/libtriton.so). uv doesn't know they're
+# mutually exclusive providers of the same import namespace, so whichever
+# gets installed *last* wins the file-overwrite race. A fresh `uv sync`
+# frequently installs plain `triton` last, silently overwriting the
+# XPU/Intel-backend build and breaking `import unsloth` with:
+#   ImportError: cannot import name 'intel' from 'triton._C.libtriton'
+# vLLM's XPU install docs hit the same issue and fix it by force-reinstalling
+# the XPU triton packages last (pip uninstall triton triton-xpu && pip
+# install triton-xpu==<ver>). Do the uv equivalent after every full sync:
+#
+#   uv sync --reinstall-package triton-xpu --reinstall-package pytorch-triton-xpu
+#
+# A plain `uv sync` re-run with nothing to install is safe (no-op, doesn't
+# retrigger the collision) — this is only needed after a resolution that
+# actually reinstalls packages (e.g. --upgrade).
