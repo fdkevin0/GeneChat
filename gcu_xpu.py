@@ -10,7 +10,7 @@ live here in ONE place. GeneChat entry scripts that need XPU support just:
     from gcu_xpu import apply_phase2_patches
     apply_phase2_patches()       # after import unsloth
 
-Bug-fix reference (17 bugs documented):
+Bug-fix reference (20 bugs documented):
   #1-2: config / model attr issues (fixed inline in config + model)
   #3: DNABERT-2 ALiBi meta-device (patch_dnabert2_alibi)
   #4: DNABERT-2 flash_attn CUDA-only (patch_dnabert2_flash_attn)
@@ -24,6 +24,8 @@ Bug-fix reference (17 bugs documented):
   #16: caching_allocator_warmup (phase 1)
   #17: torch.xpu.mem_get_info not implemented on A770 (phase 1, dual-path)
   #18: device_map="auto" memory check (fixed in model with device_map dict)
+  #19: bitsandbytes has no compiled XPU native lib (phase 2, dequantize patch)
+  #20: triton "2 active drivers" at kernel-launch time (phase 2, prune registry)
 """
 from __future__ import annotations
 
@@ -346,5 +348,41 @@ def apply_phase2_patches() -> None:
     # bitsandbytes 0.49.2 has no XPU native lib; the mock raises
     # RuntimeError. Patch to use PyTorch tensor ops instead of raw pointers.
     _patch_unsloth_dequantize_xpu()
+
+    # ── Bug #20: triton "2 active drivers" crash at kernel-launch time ──
+    _patch_triton_single_backend_xpu()
+
+
+def _patch_triton_single_backend_xpu() -> None:
+    """Bug #20: triton picks 2 "active" backend drivers and refuses to run.
+
+    Plain `triton` (pulled in transitively by unsloth/unsloth-zoo/
+    cut-cross-entropy) and `triton-xpu` both register entry points under
+    triton.backends, so triton's backend registry ends up with an
+    `nvidia` CudaDriver alongside `intel`'s XPUDriver. CudaDriver.is_active()
+    just checks torch.cuda.is_available() — which the torch.cuda.is_available
+    override above always returns True for transformers/accelerate's sake —
+    so triton sees two "active" drivers at the first kernel launch and
+    raises RuntimeError: 2 active drivers (...). There should only be one.
+
+    Fix at the source: prune triton's backend registry down to `intel`
+    only, rather than trying to make the torch.cuda.is_available lie
+    caller-aware (transformers/accelerate need it to stay True).
+
+    triton.runtime.driver does `from ..backends import backends`, binding
+    its own name to the same dict object — reassigning
+    `triton.backends.backends` to a new dict wouldn't reach that already-
+    bound reference, so this mutates the existing dict in place instead.
+    """
+    try:
+        import triton.backends as _tb
+    except ImportError:
+        return
+
+    if "intel" in _tb.backends and set(_tb.backends) != {"intel"}:
+        intel_backend = _tb.backends["intel"]
+        _tb.backends.clear()
+        _tb.backends["intel"] = intel_backend
+        print("  ✅ triton backend registry pruned to intel-only (XPU)")
 
     print("✅ Phase 2 patches applied (post-unsloth: third-party compat)")
