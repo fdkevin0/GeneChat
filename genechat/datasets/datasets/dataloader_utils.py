@@ -9,7 +9,7 @@ import time
 import random
 import torch
 
-import gcu_device as genechat_device
+from genechat.common import device as genechat_device
 from genechat.datasets.data_utils import move_to_device
 from torch.utils.data import DataLoader
 

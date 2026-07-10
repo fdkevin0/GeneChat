@@ -22,7 +22,7 @@ import numpy as np
 import torch
 from torch.utils.data.dataset import IterableDataset
 
-import gcu_device as genechat_device
+from genechat.common import device as genechat_device
 from genechat.common.registry import registry
 from genechat.datasets.datasets.base_dataset import ConcatDataset
 

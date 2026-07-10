@@ -76,7 +76,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["genechat*"]
+include = ["genechat*", "xpu*"]
 
 # ============================================================
 # XPU Index Configuration
@@ -96,7 +96,7 @@ environments = ["sys_platform == 'linux'"]
 
 # unsloth's published PyPI metadata caps torch<2.11 / transformers<=5.5.0 —
 # it doesn't officially claim support for the newer XPU-side stack this
-# project depends on. gcu_xpu.py's patch layer (Bug #19 etc.) exists
+# project depends on. xpu/patches.py's patch layer (Bug #19 etc.) exists
 # precisely because we run unsloth against versions ahead of what it
 # declares. This override tells uv's resolver to trust our pins over
 # unsloth's, instead of relying on install order to dodge the conflict.
@@ -142,5 +142,5 @@ explicit = true
 #
 # Even with triton-xpu's files correctly on top, plain `triton` is still
 # physically present and registers its own CUDA backend driver via entry
-# points — gcu_xpu.py's Bug #20 patch (apply_phase2_patches) handles that
+# points — xpu/patches.py's Bug #20 patch (apply_phase2_patches) handles that
 # at runtime by pruning triton's backend registry down to intel-only.

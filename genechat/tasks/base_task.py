@@ -11,7 +11,7 @@ import time
 import torch
 import torch.distributed as dist
 
-import gcu_device as genechat_device
+from genechat.common import device as genechat_device
 from genechat.common.dist_utils import get_rank, get_world_size, is_main_process, is_dist_avail_and_initialized
 from genechat.common.logger import MetricLogger, SmoothedValue
 from genechat.common.registry import registry

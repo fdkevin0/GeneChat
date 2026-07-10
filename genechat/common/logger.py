@@ -13,7 +13,7 @@ from collections import defaultdict, deque
 import torch
 import torch.distributed as dist
 
-import gcu_device as genechat_device
+from genechat.common import device as genechat_device
 from genechat.common import dist_utils
 
 

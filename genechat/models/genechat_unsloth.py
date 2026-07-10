@@ -21,12 +21,12 @@ from typing import List
 import torch
 import torch.nn as nn
 
-import gcu_device as genechat_device
+from genechat.common import device as genechat_device
 
 # ═══════════════════════════════════════════════════════════════════════
 # PHASE 1: Pre-unsloth patches (consolidated)
 # ═══════════════════════════════════════════════════════════════════════
-from gcu_xpu import apply_phase1_patches
+from xpu.patches import apply_phase1_patches
 apply_phase1_patches()
 
 # Now safe: unsloth detects XPU natively via torch.xpu.is_available()
@@ -36,7 +36,7 @@ from unsloth import FastLanguageModel
 # ═══════════════════════════════════════════════════════════════════════
 # PHASE 2: Post-unsloth patches (consolidated)
 # ═══════════════════════════════════════════════════════════════════════
-from gcu_xpu import apply_phase2_patches
+from xpu.patches import apply_phase2_patches
 apply_phase2_patches()
 
 from genechat.common.registry import registry

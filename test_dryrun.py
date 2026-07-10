@@ -13,7 +13,7 @@ Usage:
 from __future__ import annotations
 
 import torch
-from gcu_xpu import apply_phase1_patches, apply_phase2_patches
+from xpu.patches import apply_phase1_patches, apply_phase2_patches
 
 # NOTE: DO NOT set torch.cuda.is_available = True here!
 # unsloth must detect XPU natively via torch.xpu.is_available().

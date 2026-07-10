@@ -6,10 +6,10 @@ from __future__ import annotations
 import os, sys, gc
 
 # ═══════════════════════════════════════════════════════════════════════
-# Phase 1: XPU patches + DNABERT-2 pre-load (consolidated — see gcu_xpu.py)
+# Phase 1: XPU patches + DNABERT-2 pre-load (consolidated — see xpu/patches.py)
 # ═══════════════════════════════════════════════════════════════════════
 import torch
-from gcu_xpu import (
+from xpu.patches import (
     apply_phase1_patches,
     apply_phase2_patches,
     patch_dnabert2_alibi,
@@ -55,7 +55,7 @@ from genechat.models import *
 from genechat.runners import *
 from genechat.tasks import *
 
-# Phase 2 patches (consolidated — see gcu_xpu.py), plus extras this script
+# Phase 2 patches (consolidated — see xpu/patches.py), plus extras this script
 # needs that aren't part of the shared set (autocast/GradScaler mocks,
 # memory-stat stubs — runner_iter/base_task don't need these, but the
 # raw optimizer loop below does).

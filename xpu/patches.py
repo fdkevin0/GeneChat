@@ -1,13 +1,13 @@
 """
 XPU patches for Intel Arc GPUs — import before/after unsloth:
 
-    from gcu_xpu import apply_phase1_patches
+    from xpu.patches import apply_phase1_patches
     apply_phase1_patches()       # before import unsloth
     import unsloth
-    from gcu_xpu import apply_phase2_patches
+    from xpu.patches import apply_phase2_patches
     apply_phase2_patches()       # after import unsloth
 
-Patches (verified by xpu_test.py):
+Patches (verified by xpu/test_patches.py):
   Phase 1:  #19 bnb .so deploy, #16 caching_allocator_warmup, triton disable
             #3 DNABERT-2 ALiBi, #4 DNABERT-2 flash_attn
   Phase 2:  #9-11 Stream mock, #12 tensor.cuda redirect,
@@ -31,7 +31,7 @@ import torch
 # ═══════════════════════════════════════════════════════════════════════
 
 _BNB_XPU_LIB_SOURCE = str(
-    __import__("pathlib").Path(__file__).resolve().parents[2]
+    __import__("pathlib").Path(__file__).resolve().parents[3]
     / "bitsandbytes" / "bitsandbytes" / "libbitsandbytes_xpu.so"
 )
 

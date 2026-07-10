@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.distributed as dist
 import torch.nn.functional as F
 
-import gcu_device as genechat_device
+from genechat.common import device as genechat_device
 import genechat.common.dist_utils as dist_utils
 from genechat.common.dist_utils import download_cached_file
 from genechat.common.utils import is_url

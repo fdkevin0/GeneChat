@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """XPU bug verification test suite.
 
-Systematically tests each bug claim documented in gcu_xpu.py against the
+Systematically tests each bug claim documented in xpu/patches.py against the
 current environment.  Each test returns PASS (bug absent / fix works),
 FAIL (bug present / fix doesn't work), or SKIP (can't test in this env).
 
 Usage:
-  python xpu_test.py              # run all tests
-  python xpu_test.py --group A    # environment checks only
-  python xpu_test.py --verbose    # show full tracebacks on failure
+  python xpu/test_patches.py              # run all tests
+  python xpu/test_patches.py --group A    # environment checks only
+  python xpu/test_patches.py --verbose    # show full tracebacks on failure
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ def skip(name: str, reason: str, bug_ref: str = "") -> None:
 def _subprocess(script: str, timeout: int = 120) -> tuple[int, str, str]:
     p = subprocess.run([sys.executable, "-c", script],
                        capture_output=True, text=True, timeout=timeout,
-                       cwd=Path(__file__).resolve().parent)
+                       cwd=Path(__file__).resolve().parent.parent)
     return p.returncode, p.stdout.strip(), p.stderr.strip()
 
 
@@ -79,10 +79,6 @@ def _find_bnb_xpu_so() -> Path | None:
         if cand.is_file():
             return cand
     return None
-
-
-def _find_venv() -> Path:
-    return Path(__file__).resolve().parent / ".venv"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -160,16 +156,16 @@ def test_group_b() -> None:
 
     _check_subprocess("B.3  Phase 1 patches apply",
         "import torch; assert torch.xpu.is_available(); "
-        "from gcu_xpu import apply_phase1_patches; apply_phase1_patches(); print('OK')")
+        "from xpu.patches import apply_phase1_patches; apply_phase1_patches(); print('OK')")
 
     _check_subprocess("B.4  triton disabled",
-        "import torch; from gcu_xpu import apply_phase1_patches; "
+        "import torch; from xpu.patches import apply_phase1_patches; "
         "apply_phase1_patches(); "
         "import torch.utils._triton as _triton; "
         "assert not _triton.is_device_compatible_with_triton(); print('OK')")
 
     _check_subprocess("B.5  caching_allocator_warmup (Bug #16)",
-        "import torch; from gcu_xpu import apply_phase1_patches; "
+        "import torch; from xpu.patches import apply_phase1_patches; "
         "apply_phase1_patches(); "
         "import transformers.modeling_utils as mu; "
         "assert mu.caching_allocator_warmup.__name__ == '<lambda>'; print('OK')",
@@ -177,7 +173,7 @@ def test_group_b() -> None:
 
     # deploy_bnb_xpu_lib should be callable (no-op if already deployed)
     _check_subprocess("B.6  deploy_bnb_xpu_lib",
-        "from gcu_xpu import deploy_bnb_xpu_lib; "
+        "from xpu.patches import deploy_bnb_xpu_lib; "
         "result = deploy_bnb_xpu_lib(); print(f'deployed={result}')",
         bug_ref="#19")
 
@@ -188,9 +184,9 @@ def test_group_b() -> None:
 
 _IMPORT_BLOCK = r"""
 import torch; assert torch.xpu.is_available()
-from gcu_xpu import apply_phase1_patches; apply_phase1_patches()
+from xpu.patches import apply_phase1_patches; apply_phase1_patches()
 import unsloth
-from gcu_xpu import apply_phase2_patches; apply_phase2_patches()
+from xpu.patches import apply_phase2_patches; apply_phase2_patches()
 """
 
 

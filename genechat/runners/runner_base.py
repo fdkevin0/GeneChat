@@ -17,7 +17,7 @@ import torch
 import torch.distributed as dist
 import webdataset as wds
 
-import gcu_device as genechat_device
+from genechat.common import device as genechat_device
 from genechat.common.dist_utils import (
     download_cached_file,
     get_rank,

@@ -25,7 +25,7 @@ import torch
 # ═══════════════════════════════════════════════════════════════════════
 # PHASE 1: Pre-unsloth patches (consolidated — see genechat/common/xpu_patches.py)
 # ═══════════════════════════════════════════════════════════════════════
-from gcu_xpu import (
+from xpu.patches import (
     apply_phase1_patches,
     patch_dnabert2_alibi,
     patch_dnabert2_flash_attn,
@@ -94,7 +94,7 @@ from genechat.tasks import *                # noqa: F401, F403
 # ═══════════════════════════════════════════════════════════════════════
 # PHASE 2: Post-unsloth patches (consolidated)
 # ═══════════════════════════════════════════════════════════════════════
-from gcu_xpu import apply_phase2_patches
+from xpu.patches import apply_phase2_patches
 apply_phase2_patches()
 
 

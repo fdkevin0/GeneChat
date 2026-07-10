@@ -16,10 +16,10 @@ import sys
 import time
 
 # ═══════════════════════════════════════════════════════════════════════
-# PHASE 1: Pre-unsloth patches (consolidated — see gcu_xpu.py)
+# PHASE 1: Pre-unsloth patches (consolidated — see xpu/patches.py)
 # ═══════════════════════════════════════════════════════════════════════
 import torch
-from gcu_xpu import (
+from xpu.patches import (
     apply_phase1_patches,
     apply_phase2_patches,
     patch_dnabert2_alibi,

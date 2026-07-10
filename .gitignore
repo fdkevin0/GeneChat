@@ -1,5 +1,5 @@
 /results/
-/data/
+/data
 /old/
 
 # Byte-compiled / optimized / DLL files
@@ -167,6 +167,6 @@ cython_debug/
 # Training outputs & caches
 wandb/
 unsloth_compiled_cache/
-genechat/unsloth_checkpoints/
+genechat/unsloth_checkpoints*/
 # Allow pyproject.toml for uv-based environments
 !pyproject.toml

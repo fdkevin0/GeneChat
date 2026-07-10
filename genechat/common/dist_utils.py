@@ -13,7 +13,7 @@ import torch
 import torch.distributed as dist
 import timm.models.hub as timm_hub
 
-import gcu_device as genechat_device
+from genechat.common import device as genechat_device
 
 
 def setup_for_distributed(is_master):
