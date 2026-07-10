@@ -55,8 +55,16 @@ This fork replaces the conda/CUDA setup above with [`uv`](https://docs.astral.sh
 
 ```bash
 uv sync                    # install/update the environment from pyproject.toml
-uv run python train_unsloth.py --cfg-path configs/genechat_unsloth_stage2.yaml
+./run_train_xpu.sh         # Intel Arc (XPU) training entry
+# or, on an NVIDIA box:  ./run_train_cuda.sh
+# or invoke the script directly:
+uv run python scripts/train_unsloth.py --cfg-path configs/genechat_unsloth_stage2.yaml
 ```
+
+Entry scripts live at the repo root (`run_{train,eval}_{xpu,cuda}.sh`); they set
+`GENECHAT_DEVICE` and delegate to `scripts/`. The Python code is device-agnostic
+— `configs/*.yaml` use `device: "auto"` and `genechat.common.device` resolves
+XPU/CUDA/CPU at runtime (override with `GENECHAT_DEVICE=xpu|cuda|cpu`).
 
 **Only declare what you actually import or need version control over.** `pyproject.toml`'s `dependencies` list is limited to packages this repo's code imports directly (`torch`, `transformers`, `torchvision`, `peft`, `einops`, `numpy`, `wandb`, `timm`, …) plus the XPU-critical training stack (`unsloth`, `unsloth-zoo`, `triton-xpu`, `pytorch-triton-xpu`, `torchao`). Everything else `unsloth`/`accelerate`/`transformers` need transitively (`bitsandbytes`, `datasets`, `sentencepiece`, `tokenizers`, `huggingface-hub`, `safetensors`, `pillow`, `trl`, `diffusers`, `cut-cross-entropy`, …) is deliberately left unpinned — maintaining our own version opinion on packages `unsloth` already controls is what caused a real `transformers`/`torch` resolution conflict during a `uv sync --upgrade` (see `[tool.uv] override-dependencies` in `pyproject.toml`). Checked with `uv tree --invert --package <name>` before removing anything.
 

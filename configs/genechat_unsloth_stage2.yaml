@@ -64,7 +64,7 @@ run:
   warmup_steps: 10
 
   seed: 3407       # Unsloth default seed
-  output_dir: "unsloth_checkpoints"
+  output_dir: "outputs/unsloth_checkpoints"
 
   amp: False       # XPU: use bf16 autocast, not CUDA AMP
   resume_ckpt_path: null
@@ -73,7 +73,7 @@ run:
   evaluate: False
   train_splits: ["train"]
 
-  device: "xpu"
+  device: "auto"
   world_size: 1
   dist_url: "env://"
   distributed: False

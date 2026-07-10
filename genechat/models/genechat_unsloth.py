@@ -96,7 +96,7 @@ class GeneChatUnsloth(Blip2Base):
                 "zhihan1996/DNABERT-2-117M", trust_remote_code=True)
             if not hasattr(_gene_config, "pad_token_id"):
                 _gene_config.pad_token_id = 0
-            _gene_config._attn_implementation = "eager"
+            _gene_config._attn_implementation = genechat_device.attn_implementation()
             self.gene_encoder = AutoModel.from_pretrained(
                 "zhihan1996/DNABERT-2-117M",
                 config=_gene_config, trust_remote_code=True,
@@ -123,7 +123,7 @@ class GeneChatUnsloth(Blip2Base):
             dtype=None,                     # auto-detect (bf16 on XPU)
             load_in_4bit=load_in_4bit,
             token=os.environ.get("HF_TOKEN"),
-            device_map={"": torch.xpu.current_device()},
+            device_map={"": genechat_device.current_device()},
         )
         # Llama-3.1 uses a byte-level BPE (tiktoken) tokenizer. The slow
         # LlamaTokenizer (use_fast=False) is a sentencepiece tokenizer meant

@@ -31,7 +31,7 @@ datasets:
 
 run:
   task: protein_text_pretrain
-  device: "cuda"
+  device: "auto"
   world_size: 1
   dist_url: "env://"
   distributed: True

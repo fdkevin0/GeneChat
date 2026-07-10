@@ -60,6 +60,17 @@ def is_available() -> bool:
     return _DEVICE_TYPE != "cpu"
 
 
+def attn_implementation() -> str:
+    """HuggingFace attn_implementation for the resolved device.
+
+    XPU has no flash-attention kernels and DNABERT-2's custom flash path is
+    CUDA-only, so XPU/CPU fall back to 'eager'. CUDA uses 'sdpa' (built into
+    torch, no extra dependency) for its speed/memory win without requiring
+    the flash-attn package.
+    """
+    return "sdpa" if _DEVICE_TYPE == "cuda" else "eager"
+
+
 def _backend():
     """Return the torch.xpu / torch.cuda module for the resolved device
     type, or None on CPU. xpu and cuda modules share method names for

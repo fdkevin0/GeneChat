@@ -9,7 +9,7 @@ Applies all XPU patches documented in:
 Usage:
   cd /home/fdkevin/Workspaces/msc_project/GeneChat
   source .venv/bin/activate
-  python train_unsloth.py --cfg-path configs/genechat_unsloth_stage2.yaml
+  python scripts/train_unsloth.py --cfg-path configs/genechat_unsloth_stage2.yaml
 
 Critical ordering:
   Phase 1 (pre-unsloth): disable triton → let unsloth detect XPU naturally
@@ -23,7 +23,7 @@ import sys
 import torch
 
 # ═══════════════════════════════════════════════════════════════════════
-# PHASE 1: Pre-unsloth patches (consolidated — see genechat/common/xpu_patches.py)
+# PHASE 1: Pre-unsloth patches (consolidated — see xpu/patches.py)
 # ═══════════════════════════════════════════════════════════════════════
 from xpu.patches import (
     apply_phase1_patches,
@@ -41,7 +41,12 @@ _gene_config = AutoConfig.from_pretrained(
     "zhihan1996/DNABERT-2-117M", trust_remote_code=True)
 if not hasattr(_gene_config, "pad_token_id"):
     _gene_config.pad_token_id = 0
-_gene_config._attn_implementation = "eager"  # XPU: no flash attention
+# Mirror genechat.common.device.attn_implementation() without importing the
+# genechat package here — that would pull in unsloth before Phase 1 ordering.
+_dev = os.environ.get("GENECHAT_DEVICE", "").lower() or (
+    "xpu" if (hasattr(torch, "xpu") and torch.xpu.is_available())
+    else "cuda" if torch.cuda.is_available() else "cpu")
+_gene_config._attn_implementation = "sdpa" if _dev == "cuda" else "eager"
 
 # Download + patch DNABERT-2 cached source files
 try:
@@ -167,14 +172,13 @@ def main():
 
 
 if __name__ == "__main__":
+    from genechat.common import device as genechat_device
     print("=" * 60)
-    print("XPU Training Environment:")
+    print("Training Environment:")
     print(f"  torch:     {torch.__version__}")
-    print(f"  xpu avail: {torch.xpu.is_available()}")
-    if torch.xpu.is_available():
-        print(f"  xpu count: {torch.xpu.device_count()}")
-        print(f"  xpu name:  {torch.xpu.get_device_name(0)}")
-    print(f"  device:    {'xpu' if torch.xpu.is_available() else 'cpu'}")
+    print(f"  device:    {genechat_device.device_type()}")
+    if genechat_device.is_available():
+        print(f"  count:     {genechat_device.device_count()}")
     print("=" * 60)
 
     main()

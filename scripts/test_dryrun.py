@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Dry-run validation of the GeneChat+Unsloth pipeline on XPU.
+Dry-run validation of the GeneChat+Unsloth pipeline on XPU or CUDA.
 
 Tests the full training pipeline without downloading the full 8B model.
 Uses a tiny Llama model (from HF) or falls back to mock.
@@ -12,8 +12,25 @@ Usage:
 """
 from __future__ import annotations
 
+import os
+
 import torch
 from xpu.patches import apply_phase1_patches, apply_phase2_patches
+
+
+def _pick_device() -> torch.device:
+    """Resolve accelerator without importing genechat (which pulls unsloth).
+
+    Mirrors genechat.common.device: env override > XPU > CUDA > CPU.
+    """
+    env = os.environ.get("GENECHAT_DEVICE", "").lower()
+    if env in ("xpu", "cuda", "cpu"):
+        return torch.device(env)
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
+        return torch.device("xpu")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
 
 # NOTE: DO NOT set torch.cuda.is_available = True here!
 # unsloth must detect XPU natively via torch.xpu.is_available().
@@ -42,7 +59,7 @@ def test_dnabert2_load():
     print("TEST 2: DNABERT-2 loading")
     from transformers import AutoTokenizer, AutoModel, AutoConfig
 
-    device = torch.device("xpu" if torch.xpu.is_available() else "cpu")
+    device = _pick_device()
     print(f"  Target device: {device}")
 
     try:
@@ -120,18 +137,20 @@ def test_data_pipeline():
 
 
 def test_device_info():
-    """Show XPU device info."""
+    """Show accelerator device info (XPU or CUDA)."""
     print("=" * 60)
     print("TEST 5: Device info")
     print(f"  torch version: {torch.__version__}")
-    print(f"  XPU available: {torch.xpu.is_available()}")
-    if torch.xpu.is_available():
-        print(f"  XPU count:     {torch.xpu.device_count()}")
-        print(f"  XPU name:      {torch.xpu.get_device_name(0)}")
-        # Memory info
+    dev = _pick_device()
+    print(f"  Target device: {dev}")
+    backend = torch.xpu if dev.type == "xpu" else torch.cuda if dev.type == "cuda" else None
+    if backend is not None:
+        idx = dev.index or 0
+        print(f"  count:         {backend.device_count()}")
+        print(f"  name:          {backend.get_device_name(idx)}")
         try:
-            free, total = torch.xpu.memory.mem_get_info(0)
-            print(f"  XPU memory:    {free/1024**3:.1f}GB free / {total/1024**3:.1f}GB total")
+            free, total = backend.mem_get_info(idx)
+            print(f"  memory:        {free/1024**3:.1f}GB free / {total/1024**3:.1f}GB total")
         except Exception:
             print("  (memory info not available)")
     print("✅ Device info OK")
@@ -197,4 +216,4 @@ if __name__ == "__main__":
     print("     export HF_TOKEN='hf_...'")
     print("  2. Training data is symlinked: data -> ../data_GeneChat/data")
     print("  3. Run training:")
-    print("     python train_unsloth.py --cfg-path configs/genechat_unsloth_stage2.yaml")
+    print("     python scripts/train_unsloth.py --cfg-path configs/genechat_unsloth_stage2.yaml")

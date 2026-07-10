@@ -72,7 +72,11 @@ class RunnerBase:
     @property
     def device(self):
         if self._device is None:
-            self._device = torch.device(self.config.run_cfg.device)
+            cfg_device = self.config.run_cfg.device
+            if str(cfg_device).lower() == "auto":
+                self._device = genechat_device.device()
+            else:
+                self._device = torch.device(cfg_device)
 
         return self._device
 
@@ -387,9 +391,13 @@ class RunnerBase:
         return train_dataloader
 
     def setup_output_dir(self):
-        lib_root = Path(registry.get_path("library_root"))
+        # Base relative output_dir on the repo root, not the package dir, so
+        # training artifacts land outside the installable genechat/ package.
+        # (Absolute output_dir values in configs are unaffected: Path("/x")
+        # / "/abs" discards the left operand.)
+        repo_root = Path(registry.get_path("repo_root"))
 
-        output_dir = lib_root / self.config.run_cfg.output_dir / self.job_id
+        output_dir = repo_root / self.config.run_cfg.output_dir / self.job_id
         result_dir = output_dir / "result"
 
         output_dir.mkdir(parents=True, exist_ok=True)

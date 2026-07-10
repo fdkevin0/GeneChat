@@ -5,7 +5,7 @@ Generate predictions from a trained GeneChatUnsloth model on a test set.
 Usage:
   cd /home/fdkevin/Workspaces/msc_project/GeneChat
   source .venv/bin/activate
-  python eval_generate.py --checkpoint genechat/unsloth_checkpoints/<job_id>/checkpoint_1000.pth --out preds.json
+  python scripts/eval_generate.py --checkpoint outputs/unsloth_checkpoints/<job_id>/checkpoint_1000.pth --out preds.json
 """
 from __future__ import annotations
 
@@ -36,7 +36,12 @@ _gene_config = AutoConfig.from_pretrained(
     "zhihan1996/DNABERT-2-117M", trust_remote_code=True)
 if not hasattr(_gene_config, "pad_token_id"):
     _gene_config.pad_token_id = 0
-_gene_config._attn_implementation = "eager"
+# Mirror genechat.common.device.attn_implementation() without importing the
+# genechat package here — that would pull in unsloth before Phase 1 ordering.
+_dev = os.environ.get("GENECHAT_DEVICE", "").lower() or (
+    "xpu" if (hasattr(torch, "xpu") and torch.xpu.is_available())
+    else "cuda" if torch.cuda.is_available() else "cpu")
+_gene_config._attn_implementation = "sdpa" if _dev == "cuda" else "eager"
 
 try:
     _gene_encoder = AutoModel.from_pretrained(

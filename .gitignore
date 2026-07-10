@@ -167,6 +167,6 @@ cython_debug/
 # Training outputs & caches
 wandb/
 unsloth_compiled_cache/
-genechat/unsloth_checkpoints*/
+outputs/
 # Allow pyproject.toml for uv-based environments
 !pyproject.toml
