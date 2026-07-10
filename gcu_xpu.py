@@ -223,12 +223,19 @@ def _patch_unsloth_dequantize_xpu() -> None:
         out_absmax = locs["out_absmax"]
         blocksize2 = locs["blocksize2"]
 
-        # Vectorized: reshape absmax_q to [n_blocks, blocksize], index, scale
+        # Vectorized: reshape absmax_q to [n_blocks, blocksize], index, scale.
+        #
+        # This emulates bitsandbytes' C kernel cdequantize_blockwise_fp32, which
+        # ONLY dequantizes the nested absmax (code2[q] * absmax2) — it does NOT
+        # add the double-quant offset. unsloth's fast_dequantize/fast_gemv add
+        # `offset` themselves right after this call (out_absmax += offset). Adding
+        # it here too would double-count the offset and scale every base weight
+        # ~2x (per-block-varying), silently corrupting the pretrained model in
+        # both training and inference — so we deliberately do NOT add it here.
         n_blk2 = absmax_q.numel() // blocksize2
         absmax_q_r = absmax_q.view(n_blk2, blocksize2)
         out_absmax_r = out_absmax.view(n_blk2, blocksize2)
         out_absmax_r.copy_(code2[absmax_q_r.long()] * absmax2_s.view(-1, 1))
-        out_absmax.add_(locs["offset"])
 
     def _dequant_blockwise_nf4(
         code_ptr, A_ptr, absmax_ptr, out_ptr,
@@ -289,19 +296,19 @@ def _patch_unsloth_fast_gemv_xpu() -> None:
     Training never hits this (q_len>1 uses fast_dequantize + matmul), so the bug
     only surfaces at inference/generate time — every sample fails identically.
 
-    Fix: on XPU, replace fast_gemv with bitsandbytes 0.49.2's fast triton
-    ``torch.ops.bitsandbytes.dequantize_4bit`` kernel (~0.2 ms/matrix vs
-    unsloth's ~3.9 ms pure-PyTorch NF4 unpack), then matmul. A slow
-    ``fast_dequantize`` path is kept as a correctness-preserving fallback.
+    Fix: on XPU, replace fast_gemv with bitsandbytes' high-level
+    ``F.dequantize_4bit(W, quant_state)`` + matmul. On XPU that call dispatches
+    to bnb 0.49.2's fast triton ``torch.ops.bitsandbytes.dequantize_4bit``
+    kernel (~0.2 ms/matrix vs unsloth's ~3.9 ms pure-PyTorch NF4 unpack) and
+    handles the nested double-quant absmax with the standard single-offset
+    convention — bit-exact with the (now-corrected) [[_patch_unsloth_dequantize_xpu]]
+    path, verified mean|Δ|=0 and rel-error 0.09 against the original fp16 weight.
 
-    The one subtlety (solved 2026-07-10) is the double-quant absmax convention:
-    unsloth's dequant reconstructs the nested absmax as ``base + 2*offset``
-    (verified to reproduce ``fast_dequantize`` EXACTLY, mean|Δ|=0), whereas
-    bnb's own ``F.dequantize_4bit`` uses ``base + offset`` — a ~2.4x per-block
-    scale error on these ``unsloth/Llama-3.1-8B-bnb-4bit`` weights that yields
-    garbage generation. We therefore reconstruct unsloth's absmax ourselves
-    (``dequantize_blockwise`` + ``2*offset``) and hand bnb a non-nested absmax.
-    Net result: correct output at ~4.1 tok/s decode, ~7x over the slow path.
+    (History: an earlier version reconstructed the absmax by hand as
+    ``base + 2*offset`` to match unsloth's dequant. That doubled offset was not
+    a real convention — it mirrored a bug in _patch_unsloth_dequantize_xpu that
+    added the offset a second time. With that root bug fixed, no hand-rolled
+    absmax surgery is needed and the standard bnb API is both correct and fast.)
 
     Further speedup toward llama.cpp-class throughput (~60 tok/s) would require
     a fused 4-bit XPU gemv kernel or a different engine (GGUF/llama.cpp,
@@ -319,37 +326,16 @@ def _patch_unsloth_fast_gemv_xpu() -> None:
     import bitsandbytes.functional as _bnbF
     import bitsandbytes.backends.xpu.ops  # noqa: F401 — registers xpu kernels
 
-    _fast_dequantize = _uku.fast_dequantize
-
     def _fast_gemv_xpu(X, W, quant_state, out=None):
         if quant_state is None:
             return _torch.matmul(X, W, out=out)
-        qs = quant_state
-        try:
-            # Fast path: bitsandbytes' triton XPU dequantize_4bit (~0.2 ms vs
-            # unsloth's ~3.9 ms). The catch is the double-quant absmax: unsloth's
-            # dequant uses base + 2*offset (verified to reproduce U.fast_dequantize
-            # EXACTLY, mean|Δ|=0), whereas bnb's own F.dequantize_4bit uses
-            # base + offset -> 2x scale error -> garbage generation. So we
-            # reconstruct unsloth's absmax ourselves and hand bnb a non-nested one.
-            if getattr(qs, "state2", None) is not None:
-                absmax = _bnbF.dequantize_blockwise(qs.absmax, qs.state2)
-                absmax = absmax + 2.0 * qs.offset
-            else:
-                absmax = qs.absmax
-            W_deq = _torch.ops.bitsandbytes.dequantize_4bit(
-                W, absmax, qs.blocksize, qs.quant_type, qs.shape, qs.dtype)
-            return _torch.matmul(X, W_deq.t(), out=out)
-        except Exception:
-            # Correctness-preserving fallback to unsloth's (slow) dequant path.
-            W_deq = _fast_dequantize(W.t(), qs, use_global_buffer=False)
-            return _torch.matmul(X, W_deq, out=out)
+        W_deq = _bnbF.dequantize_4bit(W, quant_state)
+        return _torch.matmul(X, W_deq.t(), out=out)
 
     # fast_linear_forward resolves `fast_gemv` from this module's globals at
     # call time, so rebinding the attribute here redirects that call site.
     _uku.fast_gemv = _fast_gemv_xpu
-    print("  ✅ unsloth fast_gemv patched (bnb triton XPU dequantize_4bit, "
-          "base+2*offset absmax)")
+    print("  ✅ unsloth fast_gemv patched (bnb F.dequantize_4bit, XPU triton)")
 
 
 def apply_phase2_patches() -> None:
