@@ -42,7 +42,6 @@ apply_phase2_patches()
 from genechat.common.registry import registry
 from genechat.models.blip2 import Blip2Base, disabled_train
 from transformers import AutoTokenizer, AutoModel
-from transformers import LlamaTokenizer
 
 
 @registry.register_model("genechat_unsloth")
@@ -126,9 +125,12 @@ class GeneChatUnsloth(Blip2Base):
             token=os.environ.get("HF_TOKEN"),
             device_map={"": torch.xpu.current_device()},
         )
-        self.llama_tokenizer = LlamaTokenizer.from_pretrained(
-            llama_model, use_fast=False
-        )
+        # Llama-3.1 uses a byte-level BPE (tiktoken) tokenizer. The slow
+        # LlamaTokenizer (use_fast=False) is a sentencepiece tokenizer meant
+        # for Llama-1/2 (Vicuna); on Llama-3.1 it drops the space-prefix tokens
+        # entirely, so encoded targets — and therefore generated text — come
+        # out unspaced ("Predictedtobeactive"). Use the fast AutoTokenizer.
+        self.llama_tokenizer = AutoTokenizer.from_pretrained(llama_model)
         self.llama_tokenizer.pad_token = self.llama_tokenizer.eos_token
 
         # ── Apply LoRA or freeze ─────────────────────────────────────

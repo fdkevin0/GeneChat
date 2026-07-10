@@ -97,11 +97,14 @@ def load_model(checkpoint_path: str) -> GeneChatUnsloth:
     return model
 
 
-def generate(model, gene_seq: str, prompt: str, max_new_tokens: int = 256) -> str:
+def generate(model, gene_seq: str, prompt: str, max_new_tokens: int = 256):
     """Generate a gene function description.
 
     Reuses the model's own encode_gene/prompt_list_wrap (same code path as
     training) instead of re-deriving the embedding assembly here.
+
+    Returns ``(text, n_new_tokens)`` — the token count is the true number of
+    decoded steps (honours early EOS) so callers can report decode throughput.
     """
     device = model._target_device
 
@@ -128,7 +131,7 @@ def generate(model, gene_seq: str, prompt: str, max_new_tokens: int = 256) -> st
     input_len = inputs_embeds.shape[1]
     generated_ids = outputs[0][input_len:]
     text = model.llama_tokenizer.decode(generated_ids, skip_special_tokens=True)
-    return text.strip()
+    return text.strip(), int(generated_ids.shape[0])
 
 
 def main():
@@ -141,6 +144,8 @@ def main():
                     help="Limit number of test genes (for quick testing)")
     ap.add_argument("--max-new-tokens", type=int, default=256,
                     help="Max tokens to generate per sample")
+    ap.add_argument("--max-seq-len", type=int, default=3000,
+                    help="Truncate input DNA to this many bp (match training ~3000)")
     args = ap.parse_args()
 
     # Load test data
@@ -167,6 +172,8 @@ def main():
 
     print(f"Generating predictions for {len(genes)} genes...")
     start = time.time()
+    total_tokens = 0          # summed generated tokens (for aggregate tok/s)
+    total_gen_time = 0.0      # summed generate() wall-time (excludes I/O/logging)
 
     for i, gene_id in enumerate(genes):
         if gene_id not in sequences:
@@ -176,26 +183,42 @@ def main():
         seq = sequences[gene_id]
         # seq is a list of strings; take the first one
         seq_str = seq[0] if isinstance(seq, list) else seq
-        if len(seq_str) > 160000:
-            seq_str = seq_str[:159999]
+        # Match the training distribution: train sequences were capped at
+        # ~3000 bp (~6 encode windows). Test sequences reach 1.38 Mbp; feeding
+        # 160 kb yields hundreds of gene-embedding tokens the model never saw
+        # in training (and encoding them is the dominant cost). Cap to match.
+        if len(seq_str) > args.max_seq_len:
+            seq_str = seq_str[:args.max_seq_len]
 
+        t_gene = time.time()
         try:
-            pred = generate(model, seq_str, prompt, max_new_tokens=args.max_new_tokens)
+            pred, n_tok = generate(model, seq_str, prompt, max_new_tokens=args.max_new_tokens)
             predictions[gene_id] = pred
         except Exception as e:
-            print(f"  [{i+1}/{len(genes)}] {gene_id}: ERROR — {e}")
+            print(f"  [{i+1}/{len(genes)}] {gene_id}: ERROR — {e}", flush=True)
             predictions[gene_id] = ""
+            continue
 
-        if (i + 1) % 50 == 0:
-            elapsed = time.time() - start
-            rate = (i + 1) / elapsed
-            eta = (len(genes) - i - 1) / rate
-            print(f"  [{i+1}/{len(genes)}] {gene_id}: {pred[:80]}... "
-                  f"({rate:.1f}/s, ETA {eta:.0f}s)")
+        # Per-gene progress + decode throughput. Decode is slow on XPU (no fused
+        # 4-bit kernel — every step re-dequantizes weights), so log tok/s per
+        # gene for performance analysis, plus a running ETA, rather than leaving
+        # the run silent for minutes at a stretch.
+        dt = time.time() - t_gene
+        total_tokens += n_tok
+        total_gen_time += dt
+        tok_s = n_tok / dt if dt > 0 else 0.0
+        elapsed = time.time() - start
+        eta = (len(genes) - i - 1) * (elapsed / (i + 1))
+        print(f"  [{i+1}/{len(genes)}] {gene_id}: {dt:.0f}s  {n_tok}tok  "
+              f"{tok_s:.2f}tok/s (ETA {eta/60:.0f}m) | {pred[:60]!r}", flush=True)
 
     elapsed = time.time() - start
+    agg_tok_s = total_tokens / total_gen_time if total_gen_time > 0 else 0.0
     print(f"Done: {len(predictions)} predictions in {elapsed:.0f}s "
-          f"({len(predictions)/elapsed:.2f}/s)")
+          f"({len(predictions)/elapsed:.2f} genes/s)")
+    print(f"Decode throughput: {total_tokens} tokens in {total_gen_time:.0f}s "
+          f"→ {agg_tok_s:.2f} tok/s avg ({1000/agg_tok_s:.0f} ms/tok)"
+          if agg_tok_s > 0 else "Decode throughput: n/a")
 
     json.dump(predictions, open(args.out, "w"), indent=2)
     print(f"Wrote {args.out}")

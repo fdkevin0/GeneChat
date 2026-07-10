@@ -277,6 +277,81 @@ def _patch_unsloth_dequantize_xpu() -> None:
     print("  ✅ unsloth dequantize patched (PyTorch fallback for XPU)")
 
 
+def _patch_unsloth_fast_gemv_xpu() -> None:
+    """Bug #21: unsloth's fast_gemv (seq_len==1 decode path) is unusable on XPU.
+
+    During autoregressive generation, fast_linear_forward routes single-token
+    steps (bsz==1, q_len==1) through fast_gemv (unsloth/kernels/utils.py), which
+    (a) names its dequantized-absmax buffer ``df`` instead of ``out_absmax`` —
+    breaking the frame-inspection [[_patch_unsloth_dequantize_xpu]] with
+    ``KeyError: 'out_absmax'`` — and (b) then calls the fused C kernel
+    ``cgemm_4bit_inference_naive_bf16``, which has no XPU implementation at all.
+    Training never hits this (q_len>1 uses fast_dequantize + matmul), so the bug
+    only surfaces at inference/generate time — every sample fails identically.
+
+    Fix: on XPU, replace fast_gemv with bitsandbytes 0.49.2's fast triton
+    ``torch.ops.bitsandbytes.dequantize_4bit`` kernel (~0.2 ms/matrix vs
+    unsloth's ~3.9 ms pure-PyTorch NF4 unpack), then matmul. A slow
+    ``fast_dequantize`` path is kept as a correctness-preserving fallback.
+
+    The one subtlety (solved 2026-07-10) is the double-quant absmax convention:
+    unsloth's dequant reconstructs the nested absmax as ``base + 2*offset``
+    (verified to reproduce ``fast_dequantize`` EXACTLY, mean|Δ|=0), whereas
+    bnb's own ``F.dequantize_4bit`` uses ``base + offset`` — a ~2.4x per-block
+    scale error on these ``unsloth/Llama-3.1-8B-bnb-4bit`` weights that yields
+    garbage generation. We therefore reconstruct unsloth's absmax ourselves
+    (``dequantize_blockwise`` + ``2*offset``) and hand bnb a non-nested absmax.
+    Net result: correct output at ~4.1 tok/s decode, ~7x over the slow path.
+
+    Further speedup toward llama.cpp-class throughput (~60 tok/s) would require
+    a fused 4-bit XPU gemv kernel or a different engine (GGUF/llama.cpp,
+    IPEX-LLM). See the perf note in [[unsloth-lora-xpu]].
+    """
+    try:
+        import unsloth.kernels.utils as _uku
+    except ImportError:
+        return
+
+    if getattr(_uku, "DEVICE_TYPE", "") != "xpu":
+        return
+
+    import torch as _torch
+    import bitsandbytes.functional as _bnbF
+    import bitsandbytes.backends.xpu.ops  # noqa: F401 — registers xpu kernels
+
+    _fast_dequantize = _uku.fast_dequantize
+
+    def _fast_gemv_xpu(X, W, quant_state, out=None):
+        if quant_state is None:
+            return _torch.matmul(X, W, out=out)
+        qs = quant_state
+        try:
+            # Fast path: bitsandbytes' triton XPU dequantize_4bit (~0.2 ms vs
+            # unsloth's ~3.9 ms). The catch is the double-quant absmax: unsloth's
+            # dequant uses base + 2*offset (verified to reproduce U.fast_dequantize
+            # EXACTLY, mean|Δ|=0), whereas bnb's own F.dequantize_4bit uses
+            # base + offset -> 2x scale error -> garbage generation. So we
+            # reconstruct unsloth's absmax ourselves and hand bnb a non-nested one.
+            if getattr(qs, "state2", None) is not None:
+                absmax = _bnbF.dequantize_blockwise(qs.absmax, qs.state2)
+                absmax = absmax + 2.0 * qs.offset
+            else:
+                absmax = qs.absmax
+            W_deq = _torch.ops.bitsandbytes.dequantize_4bit(
+                W, absmax, qs.blocksize, qs.quant_type, qs.shape, qs.dtype)
+            return _torch.matmul(X, W_deq.t(), out=out)
+        except Exception:
+            # Correctness-preserving fallback to unsloth's (slow) dequant path.
+            W_deq = _fast_dequantize(W.t(), qs, use_global_buffer=False)
+            return _torch.matmul(X, W_deq, out=out)
+
+    # fast_linear_forward resolves `fast_gemv` from this module's globals at
+    # call time, so rebinding the attribute here redirects that call site.
+    _uku.fast_gemv = _fast_gemv_xpu
+    print("  ✅ unsloth fast_gemv patched (bnb triton XPU dequantize_4bit, "
+          "base+2*offset absmax)")
+
+
 def apply_phase2_patches() -> None:
     """Apply post-unsloth patches. Idempotent."""
     global _PHASE2_APPLIED
@@ -348,6 +423,10 @@ def apply_phase2_patches() -> None:
     # bitsandbytes 0.49.2 has no XPU native lib; the mock raises
     # RuntimeError. Patch to use PyTorch tensor ops instead of raw pointers.
     _patch_unsloth_dequantize_xpu()
+
+    # ── Bug #21: fast_gemv (seq_len==1 decode) unusable on XPU — fixes
+    #    generation/inference, which every eval_generate sample hit ──
+    _patch_unsloth_fast_gemv_xpu()
 
     # ── Bug #20: triton "2 active drivers" crash at kernel-launch time ──
     _patch_triton_single_backend_xpu()
